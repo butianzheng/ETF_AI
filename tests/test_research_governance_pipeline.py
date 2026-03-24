@@ -211,3 +211,142 @@ def test_run_research_governance_pipeline_happy_path(tmp_path, monkeypatch):
         "created_new": True,
         "summary_hash": "summary-hash-001",
     }
+
+
+def test_run_research_governance_pipeline_governance_sequence(tmp_path, monkeypatch):
+    from src.governance.automation import GovernanceCycleResult
+    from src.governance.models import GovernanceDecision
+    import src.governance_pipeline as pipeline
+
+    class FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 3, 24)
+
+    class DummyGovernanceConfig:
+        pass
+
+    class DummyStrategyConfig:
+        governance = DummyGovernanceConfig()
+
+    summary_json = tmp_path / "reports" / "research" / "summary" / "research_summary.json"
+    summary_json.parent.mkdir(parents=True, exist_ok=True)
+    summary_json.write_text("{}", encoding="utf-8")
+
+    decision = GovernanceDecision(
+        id=1,
+        decision_date=FakeDate.today(),
+        current_strategy_id="trend_momentum",
+        selected_strategy_id="risk_adjusted_momentum",
+        previous_strategy_id="trend_momentum",
+        fallback_strategy_id="trend_momentum",
+        decision_type="switch",
+        review_status="ready",
+        blocked_reasons=[],
+        reason_codes=["CHALLENGER_PROMOTED"],
+        evidence={"source": "cycle"},
+    )
+
+    order: list[str] = []
+
+    def fake_run_governance_cycle(**kwargs):
+        order.append("governance_cycle")
+        return GovernanceCycleResult(
+            decision=decision,
+            summary_hash="summary-hash-001",
+            created_new=True,
+        )
+
+    governance_cycle_artifact_path = tmp_path / "reports" / "governance" / "cycle" / "hook.json"
+    governance_review_artifact_path = tmp_path / "reports" / "governance" / "hook.json"
+    pipeline_summary_artifact_path = tmp_path / "reports" / "governance" / "pipeline" / "hook.json"
+
+    def fake_write_governance_cycle_artifact(run_date, cycle_result):
+        order.append("governance_cycle_artifact")
+        assert run_date == FakeDate.today()
+        assert cycle_result.decision is decision
+        return governance_cycle_artifact_path
+
+    def fake_write_governance_review_artifact(run_date, decision_payload):
+        order.append("governance_review_artifact")
+        assert run_date == FakeDate.today()
+        assert decision_payload is decision
+        return governance_review_artifact_path
+
+    def fake_write_pipeline_summary_artifact(
+        research_end_date,
+        governance_run_date,
+        research_result,
+        summary_result,
+        cycle_result,
+        governance_review_path,
+    ):
+        order.append("pipeline_summary_artifact")
+        assert research_end_date == date(2026, 3, 11)
+        assert governance_run_date == FakeDate.today()
+        assert cycle_result.decision is decision
+        assert governance_review_path == governance_review_artifact_path
+        return pipeline_summary_artifact_path
+
+    class DummyRepo:
+        def close(self):
+            pass
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "date", FakeDate)
+    monkeypatch.setattr(
+        pipeline,
+        "run_research_pipeline",
+        lambda **kwargs: {"report_paths": {}, "portal_paths": {}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "aggregate_research_reports",
+        lambda **kwargs: {"output_paths": {"json": str(summary_json)}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "build_report_portal",
+        lambda **kwargs: {"output_paths": {}},
+    )
+    monkeypatch.setattr(pipeline, "run_governance_cycle", fake_run_governance_cycle)
+    monkeypatch.setattr(
+        pipeline,
+        "_write_governance_cycle_artifact",
+        fake_write_governance_cycle_artifact,
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_write_governance_review_artifact",
+        fake_write_governance_review_artifact,
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_write_pipeline_summary_artifact",
+        fake_write_pipeline_summary_artifact,
+    )
+    monkeypatch.setattr(pipeline, "GovernanceRepository", DummyRepo)
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_strategy_config",
+        lambda: DummyStrategyConfig(),
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_production_strategy_id",
+        lambda: "trend_momentum",
+    )
+
+    pipeline.run_research_governance_pipeline(
+        start_date=date(2025, 12, 1),
+        end_date=date(2026, 3, 11),
+    )
+
+    assert order.index("governance_cycle") < order.index("governance_review_artifact")
+    assert order.index("governance_review_artifact") < order.index("pipeline_summary_artifact")
+    assert order == [
+        "governance_cycle",
+        "governance_cycle_artifact",
+        "governance_review_artifact",
+        "pipeline_summary_artifact",
+    ]
