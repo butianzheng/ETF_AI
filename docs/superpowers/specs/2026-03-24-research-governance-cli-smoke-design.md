@@ -98,9 +98,13 @@
 - 不 mock `run_research_governance_pipeline()`
 - CLI 参数解析、stdout/stderr、退出码映射都走真实代码
 
-### 6.2 真实落盘
+### 6.2 场景级 artifact 口径
 
-smoke 必须在 `tmp_path` 下真实生成：
+不同场景的 artifact 口径必须区分：
+
+#### `happy path`
+
+必须存在：
 
 - `reports/research/*.json`
 - `reports/research/*.md`
@@ -111,20 +115,87 @@ smoke 必须在 `tmp_path` 下真实生成：
 - `reports/governance/pipeline/*.json`
 - `reports/portal_summary.json`
 
+#### `blocked`
+
+必须存在：
+
+- `reports/research/*.json`
+- `reports/research/*.md`
+- `reports/research/*.csv`
+- `reports/research/summary/*`
+- `reports/governance/cycle/*.json`
+- `reports/governance/*.json`
+- `reports/governance/pipeline/*.json`
+- `reports/portal_summary.json`
+
+要求：
+
+- `blocked` 只影响退出码语义
+- 不能因为 `blocked` 跳过 artifact 写盘
+
+#### fatal
+
+本子项目固定选 pre-governance 的 `summary` 失败场景。
+
+必须存在：
+
+- `reports/governance/pipeline/*.json`
+  - 且为 partial `pipeline summary`
+
+必须不存在：
+
+- `reports/governance/cycle/*.json`
+- `reports/governance/*.json`
+- `reports/portal_summary.json`
+
+可存在但不作为强制断言：
+
+- `reports/research/*.json`
+- `reports/research/*.md`
+- `reports/research/*.csv`
+
+原因：
+
+- fatal 发生在 `summary` 之后前不会再进入 governance / portal
+- 但 research 阶段可能已经由 smoke stub 写入最小研究文件
+
 ### 6.3 允许 stub 的依赖
 
-允许对以下重依赖做 monkeypatch：
+按默认推荐，允许对以下重依赖做 monkeypatch：
 
 - `run_research_pipeline`
-- `aggregate_research_reports`
 - `run_governance_cycle`
-- `build_report_portal`
+
+仅在特定场景允许额外 monkeypatch：
+
+- fatal smoke：
+  - 可以让 `aggregate_research_reports` 直接抛出预期异常
+- 不默认 monkeypatch `build_report_portal`
+  - happy / blocked 场景应尽量走真实 portal 写盘
 
 约束：
 
 - patched 函数必须返回真实 service 期望的数据结构
 - 不允许把整个 service 结果直接 mock 成最终返回值
-- 不允许绕过 artifact helper 的真实写盘
+- happy / blocked 场景中，`aggregate_research_reports()` 与 `build_report_portal()` 默认走真实实现
+- `run_research_pipeline` 的 stub 若被使用，必须自己在 `tmp_path` 下写出最小 research 文件，供真实 summary/portal 消费
+
+### 6.4 `failed_step` 命名口径
+
+当前 service 的 `failed_step` 命名按编排步骤字符串写入，planning 阶段应以现有实现为准：
+
+- `research`
+- `summary`
+- `portal_pre_governance`
+- `governance_cycle`
+- `governance_cycle_artifact`
+- `governance_review_artifact`
+- `pipeline_summary`
+- `portal_final_refresh`
+
+本子项目的 fatal smoke 固定断言：
+
+- `failed_step == "summary"`
 
 ## 7. 场景设计
 
@@ -138,6 +209,25 @@ smoke 必须在 `tmp_path` 下真实生成：
   - `--end-date`
   - `--candidate-config`
 - service 正常跑完
+
+最小 `candidate-config` 样例固定采用：
+
+```yaml
+research:
+  candidates:
+    - name: baseline_trend
+      strategy_id: trend_momentum
+      description: baseline
+      overrides: {}
+```
+
+要求：
+
+- smoke 至少包含 `research.candidates`
+- 每个 candidate 至少包含：
+  - `name`
+  - `strategy_id`
+  - `overrides`
 
 必须断言：
 
@@ -189,6 +279,7 @@ smoke 必须在 `tmp_path` 下真实生成：
   - `error.type`
   - `error.message`
 - cycle / review artifact 不存在
+- `portal_summary.json` 不存在
 
 ## 8. 文件边界
 
@@ -212,10 +303,12 @@ smoke 必须在 `tmp_path` 下真实生成：
 
 - 一个 helper：
   - 真实写 `candidate-config` YAML
+  - 使用 7.1 中定义的最小 schema
 - 一个 helper：
   - 固定 `tmp_path` 下的 `cwd`
 - 少量 helper：
-  - 生成最小 research / summary / portal 输入
+  - 生成最小 research 输入
+  - 让真实 summary/portal 能消费这些输入
 
 组织原则：
 
