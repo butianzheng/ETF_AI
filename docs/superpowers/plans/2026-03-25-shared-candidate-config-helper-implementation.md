@@ -86,11 +86,41 @@ def test_parse_candidate_config_data_returns_candidate_specs():
 
 def test_load_candidate_specs_returns_none_without_candidate_config():
     assert load_candidate_specs(None) is None
+
+
+def test_load_candidate_specs_reads_yaml_from_path(tmp_path):
+    config_path = tmp_path / "research.yaml"
+    config_path.write_text(
+        '''
+research:
+  candidates:
+    - name: fast_rebalance
+      strategy_id: risk_adjusted_momentum
+      description: test candidate
+      overrides:
+        strategy_params:
+          volatility_penalty_weight: 0.8
+'''.strip(),
+        encoding="utf-8",
+    )
+
+    assert load_candidate_specs(str(config_path)) == [
+        {
+            "name": "fast_rebalance",
+            "strategy_id": "risk_adjusted_momentum",
+            "description": "test candidate",
+            "overrides": {
+                "strategy_params": {
+                    "volatility_penalty_weight": 0.8,
+                }
+            },
+        }
+    ]
 ```
 
 - [ ] **Step 2: 跑测试，确认共享模块尚未实现**
 
-Run: `pytest tests/test_research_pipeline.py -q -k "candidate_specs or parse_candidate_config_data"`
+Run: `pytest tests/test_research_pipeline.py -q -k "candidate_specs or parse_candidate_config_data or reads_yaml_from_path"`
 
 Expected:
 - FAIL
@@ -132,7 +162,7 @@ def load_candidate_specs(candidate_config: str | Path | None) -> list[dict[str, 
 
 - [ ] **Step 4: 回跑解析测试，确认共享边界闭合**
 
-Run: `pytest tests/test_research_pipeline.py -q -k "candidate_specs or parse_candidate_config_data"`
+Run: `pytest tests/test_research_pipeline.py -q -k "candidate_specs or parse_candidate_config_data or reads_yaml_from_path"`
 
 Expected:
 - PASS
