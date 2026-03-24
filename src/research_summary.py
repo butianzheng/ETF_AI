@@ -44,9 +44,157 @@ def _read_report(path: Path) -> Dict[str, Any]:
         return json.load(f)
 
 
+def _build_regime_summary(regime_distributions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    aggregate_distribution = {"risk_on": 0, "neutral": 0, "risk_off": 0}
+    for item in regime_distributions:
+        for regime_label in aggregate_distribution:
+            aggregate_distribution[regime_label] += int(item["counts"].get(regime_label, 0))
+    latest_distribution = regime_distributions[-1]["counts"] if regime_distributions else aggregate_distribution
+    return {
+        "report_count": len(regime_distributions),
+        "latest_distribution": latest_distribution,
+        "aggregate_distribution": aggregate_distribution,
+    }
+
+
+def _build_candidate_regime_observations(
+    candidate_regime_leaderboard: List[Dict[str, Any]],
+    candidate_out_of_sample_leaderboard: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    observations: List[Dict[str, Any]] = []
+
+    risk_on_rows = [row for row in candidate_regime_leaderboard if row["regime_label"] == "risk_on"]
+    best_risk_on = max(
+        risk_on_rows,
+        key=lambda item: ((item["avg_annual_return"] or 0.0), (item["avg_sharpe"] or 0.0)),
+        default=None,
+    )
+    if best_risk_on is None:
+        observations.append(
+            {
+                "question": "哪个候选在 risk_on 最强",
+                "answer": "暂无足够样本。",
+                "evidence": {},
+            }
+        )
+    else:
+        observations.append(
+            {
+                "question": "哪个候选在 risk_on 最强",
+                "answer": f"{best_risk_on['name']} / {best_risk_on['strategy_id']} 在 risk_on 下平均年化最高。",
+                "evidence": {
+                    "avg_annual_return": best_risk_on["avg_annual_return"],
+                    "avg_sharpe": best_risk_on["avg_sharpe"],
+                },
+            }
+        )
+
+    risk_off_rows = [row for row in candidate_regime_leaderboard if row["regime_label"] == "risk_off"]
+    best_risk_off = max(
+        risk_off_rows,
+        key=lambda item: ((item["avg_max_drawdown"] or -1.0), (item["avg_sharpe"] or 0.0)),
+        default=None,
+    )
+    if best_risk_off is None:
+        observations.append(
+            {
+                "question": "哪个候选在 risk_off 更稳",
+                "answer": "暂无足够样本。",
+                "evidence": {},
+            }
+        )
+    else:
+        observations.append(
+            {
+                "question": "哪个候选在 risk_off 更稳",
+                "answer": f"{best_risk_off['name']} / {best_risk_off['strategy_id']} 在 risk_off 下平均回撤更小。",
+                "evidence": {
+                    "avg_max_drawdown": best_risk_off["avg_max_drawdown"],
+                    "avg_sharpe": best_risk_off["avg_sharpe"],
+                },
+            }
+        )
+
+    per_candidate_spread: Dict[str, Dict[str, Any]] = {}
+    for row in candidate_regime_leaderboard:
+        key = f"{row['name']}::{row['strategy_id']}"
+        stats = per_candidate_spread.setdefault(
+            key,
+            {
+                "name": row["name"],
+                "strategy_id": row["strategy_id"],
+                "best_regime": row["regime_label"],
+                "best_return": row["avg_annual_return"] or 0.0,
+                "worst_regime": row["regime_label"],
+                "worst_return": row["avg_annual_return"] or 0.0,
+            },
+        )
+        avg_return = row["avg_annual_return"] or 0.0
+        if avg_return > stats["best_return"]:
+            stats["best_return"] = avg_return
+            stats["best_regime"] = row["regime_label"]
+        if avg_return < stats["worst_return"]:
+            stats["worst_return"] = avg_return
+            stats["worst_regime"] = row["regime_label"]
+    most_dependent = max(
+        per_candidate_spread.values(),
+        key=lambda item: item["best_return"] - item["worst_return"],
+        default=None,
+    )
+    if most_dependent is None:
+        observations.append(
+            {
+                "question": "某候选是否只在单一 regime 下有效",
+                "answer": "暂无足够样本。",
+                "evidence": {},
+            }
+        )
+    else:
+        observations.append(
+            {
+                "question": "某候选是否只在单一 regime 下有效",
+                "answer": f"{most_dependent['name']} / {most_dependent['strategy_id']} 的状态差异最大，最佳状态为 {most_dependent['best_regime']}。",
+                "evidence": {
+                    "best_regime": most_dependent["best_regime"],
+                    "worst_regime": most_dependent["worst_regime"],
+                    "return_spread": most_dependent["best_return"] - most_dependent["worst_return"],
+                },
+            }
+        )
+
+    worst_oos = min(
+        candidate_out_of_sample_leaderboard,
+        key=lambda item: item["degradation_vs_overall"] if item["degradation_vs_overall"] is not None else 0.0,
+        default=None,
+    )
+    if worst_oos is None:
+        observations.append(
+            {
+                "question": "某候选在样本外是否明显退化",
+                "answer": "暂无足够样本。",
+                "evidence": {},
+            }
+        )
+    else:
+        observations.append(
+            {
+                "question": "某候选在样本外是否明显退化",
+                "answer": f"{worst_oos['name']} / {worst_oos['strategy_id']} 的样本外年化相对整体退化最明显。",
+                "evidence": {
+                    "avg_out_of_sample_annual_return": worst_oos["avg_out_of_sample_annual_return"],
+                    "degradation_vs_overall": worst_oos["degradation_vs_overall"],
+                },
+            }
+        )
+
+    return observations
+
+
 def _build_markdown(
     report_summaries: List[Dict[str, Any]],
     candidate_leaderboard: List[Dict[str, Any]],
+    regime_summary: Dict[str, Any],
+    candidate_regime_observations: List[Dict[str, Any]],
 ) -> str:
     lines = [
         "# Research Summary",
@@ -104,6 +252,19 @@ def _build_markdown(
             )
         )
 
+    lines.extend(
+        [
+            "",
+            "## Regime Summary",
+            f"- 最新状态分布：{regime_summary.get('latest_distribution', {})}",
+            f"- 聚合状态分布：{regime_summary.get('aggregate_distribution', {})}",
+            "",
+            "## 核心观察",
+        ]
+    )
+    for item in candidate_regime_observations:
+        lines.append(f"- {item['question']}：{item['answer']}")
+
     return "\n".join(lines)
 
 
@@ -119,6 +280,7 @@ def _build_html(
     report_summaries: List[Dict[str, Any]],
     candidate_leaderboard: List[Dict[str, Any]],
     candidate_observations: List[Dict[str, Any]],
+    candidate_regime_observations: List[Dict[str, Any]],
 ) -> str:
     latest_report = report_summaries[-1] if report_summaries else None
     leader = candidate_leaderboard[0] if candidate_leaderboard else None
@@ -133,6 +295,17 @@ def _build_html(
     )
     report_json = json.dumps(report_summaries, ensure_ascii=False)
     candidate_json = json.dumps(candidate_observations, ensure_ascii=False)
+    observation_cards = "".join(
+        [
+            (
+                '<article class="metric">'
+                f'<div class="metric-label">{escape(item["question"])}</div>'
+                f'<div class="metric-note">{escape(item["answer"])}</div>'
+                "</article>"
+            )
+            for item in candidate_regime_observations
+        ]
+    )
 
     return """
 <!DOCTYPE html>
@@ -451,6 +624,13 @@ def _build_html(
       </div>
       <div class="footer">数据来源：`reports/research/*.json` 聚合结果</div>
     </section>
+
+    <section class="section">
+      <h2>状态观察</h2>
+      <div class="metrics">
+        {observation_cards}
+      </div>
+    </section>
   </main>
   <script>
     const reportData = {report_json};
@@ -664,6 +844,7 @@ def _build_html(
         candidate_options=candidate_options,
         report_json=report_json,
         candidate_json=candidate_json,
+        observation_cards=observation_cards,
     ).strip()
 
 
@@ -697,6 +878,7 @@ def aggregate_research_reports(
 
     report_summaries: List[Dict[str, Any]] = []
     candidate_observations: List[Dict[str, Any]] = []
+    regime_distributions: List[Dict[str, Any]] = []
     candidate_stats: Dict[str, Dict[str, Any]] = defaultdict(
         lambda: {
             "name": "",
@@ -713,11 +895,43 @@ def aggregate_research_reports(
             "latest_overrides": {},
         }
     )
+    candidate_regime_stats: Dict[str, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "name": "",
+            "strategy_id": "n/a",
+            "regime_label": "neutral",
+            "appearances": 0,
+            "annual_returns": [],
+            "sharpes": [],
+            "max_drawdowns": [],
+            "observation_counts": [],
+            "last_seen": "",
+        }
+    )
+    candidate_out_sample_stats: Dict[str, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "name": "",
+            "strategy_id": "n/a",
+            "appearances": 0,
+            "out_annual_returns": [],
+            "out_sharpes": [],
+            "out_max_drawdowns": [],
+            "overall_annual_returns": [],
+            "last_seen": "",
+        }
+    )
 
     for path in report_paths:
         payload = _read_report(path)
         ranked_candidates = payload.get("research_output", {}).get("ranked_candidates", [])
         top_candidate = ranked_candidates[0] if ranked_candidates else {}
+        candidate_meta = {
+            _candidate_name(candidate, f"candidate_{idx}"): {
+                "strategy_id": _candidate_strategy_id(candidate),
+                "description": candidate.get("description"),
+            }
+            for idx, candidate in enumerate(payload.get("comparison_rows", []), start=1)
+        }
         report_summary = {
             "report_date": path.stem,
             "candidate_count": len(payload.get("comparison_rows", [])),
@@ -730,6 +944,12 @@ def aggregate_research_reports(
             "top_sharpe": _safe_float(top_candidate.get("sharpe")),
         }
         report_summaries.append(report_summary)
+        regime_counts = {"risk_on": 0, "neutral": 0, "risk_off": 0}
+        for snapshot in payload.get("regime_daily_labels", []):
+            label = snapshot.get("regime_label")
+            if label in regime_counts:
+                regime_counts[label] += 1
+        regime_distributions.append({"report_date": path.stem, "counts": regime_counts})
 
         for idx, candidate in enumerate(ranked_candidates, start=1):
             candidate_name = _candidate_name(candidate, f"candidate_{idx}")
@@ -770,6 +990,50 @@ def aggregate_research_reports(
                 }
             )
 
+        for candidate_name, regime_metrics in payload.get("candidate_regime_metrics", {}).items():
+            strategy_id = candidate_meta.get(candidate_name, {}).get("strategy_id", "n/a")
+            for regime_label, metrics in regime_metrics.get("by_regime_metrics", {}).items():
+                stats = candidate_regime_stats[f"{regime_label}::{candidate_name}::{strategy_id}"]
+                stats["name"] = candidate_name
+                stats["strategy_id"] = strategy_id
+                stats["regime_label"] = regime_label
+                stats["appearances"] += 1
+                stats["last_seen"] = path.stem
+                annual_return = _safe_float(metrics.get("annual_return"))
+                sharpe = _safe_float(metrics.get("sharpe"))
+                max_drawdown = _safe_float(metrics.get("max_drawdown"))
+                observation_count = _safe_float(metrics.get("observation_count"))
+                if annual_return is not None:
+                    stats["annual_returns"].append(annual_return)
+                if sharpe is not None:
+                    stats["sharpes"].append(sharpe)
+                if max_drawdown is not None:
+                    stats["max_drawdowns"].append(max_drawdown)
+                if observation_count is not None:
+                    stats["observation_counts"].append(observation_count)
+
+        for candidate_name, sample_metrics in payload.get("candidate_sample_split_metrics", {}).items():
+            strategy_id = candidate_meta.get(candidate_name, {}).get("strategy_id", "n/a")
+            stats = candidate_out_sample_stats[f"{candidate_name}::{strategy_id}"]
+            stats["name"] = candidate_name
+            stats["strategy_id"] = strategy_id
+            stats["appearances"] += 1
+            stats["last_seen"] = path.stem
+            out_metrics = sample_metrics.get("out_of_sample_metrics", {})
+            overall_metrics = payload.get("candidate_regime_metrics", {}).get(candidate_name, {}).get("overall_metrics", {})
+            out_annual_return = _safe_float(out_metrics.get("annual_return"))
+            out_sharpe = _safe_float(out_metrics.get("sharpe"))
+            out_max_drawdown = _safe_float(out_metrics.get("max_drawdown"))
+            overall_annual_return = _safe_float(overall_metrics.get("annual_return"))
+            if out_annual_return is not None:
+                stats["out_annual_returns"].append(out_annual_return)
+            if out_sharpe is not None:
+                stats["out_sharpes"].append(out_sharpe)
+            if out_max_drawdown is not None:
+                stats["out_max_drawdowns"].append(out_max_drawdown)
+            if overall_annual_return is not None:
+                stats["overall_annual_returns"].append(overall_annual_return)
+
     report_summaries.sort(key=lambda item: item["report_date"])
     candidate_leaderboard = []
     for stats in candidate_stats.values():
@@ -799,6 +1063,59 @@ def aggregate_research_reports(
             -(item["avg_annual_return"] or 0.0),
         )
     )
+    regime_summary = _build_regime_summary(regime_distributions)
+    candidate_regime_leaderboard = []
+    for stats in candidate_regime_stats.values():
+        candidate_regime_leaderboard.append(
+            {
+                "regime_label": stats["regime_label"],
+                "name": stats["name"],
+                "strategy_id": stats["strategy_id"],
+                "appearances": stats["appearances"],
+                "avg_annual_return": _average(stats["annual_returns"]),
+                "avg_sharpe": _average(stats["sharpes"]),
+                "avg_max_drawdown": _average(stats["max_drawdowns"]),
+                "avg_observation_count": _average(stats["observation_counts"]),
+                "last_seen": stats["last_seen"],
+            }
+        )
+    candidate_regime_leaderboard.sort(
+        key=lambda item: (
+            item["regime_label"],
+            -(item["avg_annual_return"] or 0.0),
+            -(item["avg_sharpe"] or 0.0),
+        )
+    )
+
+    candidate_out_of_sample_leaderboard = []
+    for stats in candidate_out_sample_stats.values():
+        avg_out_return = _average(stats["out_annual_returns"])
+        avg_overall_return = _average(stats["overall_annual_returns"])
+        degradation = None
+        if avg_out_return is not None and avg_overall_return is not None:
+            degradation = avg_out_return - avg_overall_return
+        candidate_out_of_sample_leaderboard.append(
+            {
+                "name": stats["name"],
+                "strategy_id": stats["strategy_id"],
+                "appearances": stats["appearances"],
+                "avg_out_of_sample_annual_return": avg_out_return,
+                "avg_out_of_sample_sharpe": _average(stats["out_sharpes"]),
+                "avg_out_of_sample_max_drawdown": _average(stats["out_max_drawdowns"]),
+                "degradation_vs_overall": degradation,
+                "last_seen": stats["last_seen"],
+            }
+        )
+    candidate_out_of_sample_leaderboard.sort(
+        key=lambda item: (
+            -(item["avg_out_of_sample_annual_return"] or 0.0),
+            -(item["avg_out_of_sample_sharpe"] or 0.0),
+        )
+    )
+    candidate_regime_observations = _build_candidate_regime_observations(
+        candidate_regime_leaderboard,
+        candidate_out_of_sample_leaderboard,
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     markdown_path = output_dir / "research_summary.md"
@@ -808,7 +1125,12 @@ def aggregate_research_reports(
     candidates_csv_path = output_dir / "research_candidates.csv"
 
     markdown_path.write_text(
-        _build_markdown(report_summaries=report_summaries, candidate_leaderboard=candidate_leaderboard),
+        _build_markdown(
+            report_summaries=report_summaries,
+            candidate_leaderboard=candidate_leaderboard,
+            regime_summary=regime_summary,
+            candidate_regime_observations=candidate_regime_observations,
+        ),
         encoding="utf-8",
     )
     html_path.write_text(
@@ -816,6 +1138,7 @@ def aggregate_research_reports(
             report_summaries=report_summaries,
             candidate_leaderboard=candidate_leaderboard,
             candidate_observations=candidate_observations,
+            candidate_regime_observations=candidate_regime_observations,
         ),
         encoding="utf-8",
     )
@@ -826,6 +1149,10 @@ def aggregate_research_reports(
                 "report_summaries": report_summaries,
                 "candidate_leaderboard": candidate_leaderboard,
                 "candidate_observations": candidate_observations,
+                "regime_summary": regime_summary,
+                "candidate_regime_leaderboard": candidate_regime_leaderboard,
+                "candidate_out_of_sample_leaderboard": candidate_out_of_sample_leaderboard,
+                "candidate_regime_observations": candidate_regime_observations,
             },
             ensure_ascii=False,
             indent=2,
@@ -870,6 +1197,10 @@ def aggregate_research_reports(
         "report_summaries": report_summaries,
         "candidate_leaderboard": candidate_leaderboard,
         "candidate_observations": candidate_observations,
+        "regime_summary": regime_summary,
+        "candidate_regime_leaderboard": candidate_regime_leaderboard,
+        "candidate_out_of_sample_leaderboard": candidate_out_of_sample_leaderboard,
+        "candidate_regime_observations": candidate_regime_observations,
         "output_paths": {
             "markdown": str(markdown_path),
             "html": str(html_path),

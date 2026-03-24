@@ -593,3 +593,69 @@
 - `pytest -q tests/test_report_portal.py` 通过，`2 passed`
 - `pytest -q` 通过，`75 passed in 1.60s`
 - `python3 -m compileall src scripts tests` 通过
+
+## 2026-03-24 Phase 4 状态感知研究实施计划
+
+### 计划
+- [x] 复核 Phase 4 设计 spec，锁定“规则型 3 档 regime + ETF 池聚合 + 仅研究线”边界
+- [x] 输出 Phase 4 implementation plan
+- [x] 同步 `tasks/todo.md` 记录当前阶段状态
+- [ ] 执行 Task 1，落地 regime 配置与规则型分类器
+- [ ] 执行 Task 2，落地样本切片与候选分层分析
+- [ ] 执行 Task 3，把 regime 分析接入 `src/research_pipeline.py`
+- [ ] 执行 Task 4，升级 `src/research_summary.py` 并完成全量验证
+
+### 结果
+- 已新增 Phase 4 plan：
+  `docs/superpowers/plans/2026-03-24-phase-four-regime-research-implementation.md`
+- 本阶段继续保持“单一 ETF 实盘不接 `regime`”约束，当前只增强研究证据层
+- 计划已拆成 4 个可独立验证的任务，覆盖配置、分类、分析、单次研究落盘和跨报告汇总
+
+### 审查
+- 计划边界与 `docs/superpowers/specs/2026-03-24-phase-four-regime-research-design.md` 一致，未扩到生产 runtime
+- 计划默认按 TDD 执行，并明确了每个 Task 的专项测试、全量测试与最终编译校验
+- 当前仅完成文档与计划，代码实现尚未开始
+
+### Task 1 结果
+- 已扩展 `ResearchConfig`，新增 `regime` 与 `sample_split` 配置模型
+- 已扩展 `config/research.yaml`，补齐规则型 regime 阈值和 70/30 样本切分配置
+- 已新增 `src/research/regime.py`，支持 ETF 池价格序列到逐日 `RegimeSnapshot` 列表的规则型分类
+- 已新增 `tests/test_regime_classifier.py`，覆盖配置加载、`risk_on/risk_off` 判定与 coverage 不足回退
+- 已生成 Task 1 提交：`a758d45 feat: add regime classifier for research`
+
+### Task 1 验证
+- `pytest -q tests/test_regime_classifier.py -v` 通过，`3 passed`
+- `pytest -q tests/test_research_pipeline.py -v` 通过，`3 passed`
+- `pytest -q tests/test_research_summary.py -v` 通过，`2 passed`
+- `python3 -m compileall src/research src/core/config.py tests/test_regime_classifier.py` 通过
+
+### Task 2 结果
+- 已新增 `src/research/segmentation.py`，实现固定 70/30 交易日样本切片
+- 已新增 `src/research/regime_analysis.py`，支持 `overall / by_regime / in_sample / out_of_sample / by_regime_and_sample / transition` 分层统计
+- 已新增 `tests/test_regime_analysis.py`，覆盖切片比例、状态分层和 transition 聚合
+- 已生成 Task 2 提交：`c7a90d3 feat: add regime segmentation analysis`
+
+### Task 2 验证
+- `pytest -q tests/test_regime_analysis.py -v` 通过，`2 passed`
+- `python3 -m compileall src/research tests/test_regime_analysis.py` 通过
+
+### Task 3 结果
+- `src/research_pipeline.py` 已接入 ETF 池 regime 标签、样本切片和候选分层分析
+- 单次研究 JSON 已新增 `regime_config_snapshot`、`regime_daily_labels`、`candidate_regime_metrics`、`candidate_sample_split_metrics`、`candidate_regime_transition_metrics`
+- Markdown 研究报告已补 `Regime 概览` 与 `样本外观察`
+- 已生成 Task 3 提交：`0097f6e feat: enrich research pipeline with regime outputs`
+
+### Task 3 验证
+- `pytest -q tests/test_research_pipeline.py -v` 通过，`4 passed`
+- `python3 -m compileall src/research_pipeline.py tests/test_research_pipeline.py` 通过
+
+### Task 4 结果
+- `src/research_summary.py` 已新增 `regime_summary`、`candidate_regime_leaderboard`、`candidate_out_of_sample_leaderboard`、`candidate_regime_observations`
+- 研究汇总 Markdown / HTML 已显式回答 `risk_on` 强者、`risk_off` 稳定者、单一状态依赖和样本外退化四个问题
+- 研究汇总 HTML 已新增“状态观察”区块
+
+### Task 4 验证
+- `pytest -q tests/test_research_summary.py -v` 通过，`2 passed`
+- `pytest -q tests/test_regime_classifier.py tests/test_regime_analysis.py tests/test_research_pipeline.py tests/test_research_summary.py -v` 通过，`11 passed`
+- `pytest -q` 通过，`81 passed in 2.25s`
+- `python3 -m compileall src scripts tests` 通过
