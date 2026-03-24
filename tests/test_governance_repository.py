@@ -69,6 +69,7 @@ def test_governance_repository_tracks_publish_and_rollback():
         assert reviewed.review_status == "blocked"
         assert reviewed.blocked_reasons == ["SELECTED_STRATEGY_REGIME_MISMATCH"]
         assert reviewed.evidence["regime_gate"]["gate_status"] == "blocked"
+        assert reviewed.evidence["avg_sharpe"] == 1.42
 
         approved = repo.approve(draft.id, approved_by="tester")
         assert approved.status == "approved"

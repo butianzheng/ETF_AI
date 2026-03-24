@@ -312,7 +312,9 @@ class GovernanceRepository(BaseRepository):
         record.review_status = review_status
         record.blocked_reasons_json = _to_json_compatible(blocked_reasons)
         if evidence is not None:
-            record.evidence_json = _to_json_compatible(evidence)
+            existing_evidence = record.evidence_json if isinstance(record.evidence_json, dict) else {}
+            merged_evidence = {**existing_evidence, **evidence}
+            record.evidence_json = _to_json_compatible(merged_evidence)
         self.session.commit()
         self.session.refresh(record)
         return _to_governance_decision(record)
