@@ -188,12 +188,35 @@
 - smoke 全量：`pytest tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`4 passed`）
 - 聚焦回归：`pytest tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`16 passed`）
 
+## 2026-03-25 B 子项目：shared candidate-config helper 收尾
+
+### 执行清单（Task 4）
+- [x] 更新任务跟踪（spec/plan、Task 1/2/3 提交、审查状态、验证结果）
+- [x] 将下一步行动从 B 子项目切换到后续端到端/文档工作
+- [x] 完成最终聚焦回归
+
+### 规划产物
+
+- Spec: `docs/superpowers/specs/2026-03-25-shared-candidate-config-helper-design.md`
+- Plan: `docs/superpowers/plans/2026-03-25-shared-candidate-config-helper-implementation.md`
+
+### 完成结果
+
+- Task 1（共享生产 helper 与解析边界测试）提交：`d9bd752`
+- Task 2（CLI 切换共享 helper 与 wiring test）提交：`ac1ca79`
+- Task 3（tests/support helper 收敛）提交：`f2df7f7`
+- 审查状态：Task 1/2/3 已通过审查；Task 4 文档一致性与路径准确性自审通过
+
+### 关键验证
+
+- 最终聚焦回归：`pytest tests/test_research_pipeline.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`24 passed in 1.75s`）
+
 ## 下一步行动
 
-1. 启动 B 子项目：抽共享 `candidate-config` helper，收敛 CLI 与 smoke 的配置加载路径
-2. 补充端到端脚本，把 Agent 输出接入日报/研究流
-3. 修正文档与代码的剩余不一致项
-4. 增加更完整的集成测试与示例脚本
+1. 补充端到端脚本，把 Agent 输出接入日报/研究流
+2. 修正文档与代码的剩余不一致项（重点同步 CLI 与 pipeline 行为说明）
+3. 增加更完整的集成测试与示例脚本
+4. 规划下一轮研究-治理联调验证与发布前检查清单
 
 ## 2026-03-12 项目扫描
 
