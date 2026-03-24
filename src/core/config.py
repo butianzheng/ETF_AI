@@ -127,9 +127,44 @@ class ResearchCandidateConfig(BaseModel):
     overrides: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ResearchRegimeRuleConfig(BaseModel):
+    """Regime 规则阈值配置。"""
+
+    breadth_above_ma120_min: float | None = None
+    breadth_above_ma120_max: float | None = None
+    return_20_min: float | None = None
+    return_20_max: float | None = None
+    return_60_min: float | None = None
+    return_60_max: float | None = None
+    drawdown_60_min: float | None = None
+    drawdown_60_max: float | None = None
+    ma_distance_120_min: float | None = None
+    ma_distance_120_max: float | None = None
+    volatility_20_min: float | None = None
+    volatility_20_max: float | None = None
+
+
+class ResearchRegimeConfig(BaseModel):
+    """研究阶段的市场状态识别配置。"""
+
+    enabled: bool = True
+    min_pool_coverage: int = 3
+    min_volatility_20: float = 0.18
+    risk_on: ResearchRegimeRuleConfig = Field(default_factory=ResearchRegimeRuleConfig)
+    risk_off: ResearchRegimeRuleConfig = Field(default_factory=ResearchRegimeRuleConfig)
+
+
+class ResearchSampleSplitConfig(BaseModel):
+    """研究样本切分配置。"""
+
+    in_sample_ratio: float = 0.70
+
+
 class ResearchConfig(BaseModel):
     """研究配置"""
     candidates: List[ResearchCandidateConfig] = Field(default_factory=list)
+    regime: ResearchRegimeConfig = Field(default_factory=ResearchRegimeConfig)
+    sample_split: ResearchSampleSplitConfig = Field(default_factory=ResearchSampleSplitConfig)
 
 
 class Settings(BaseSettings):

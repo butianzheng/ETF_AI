@@ -1,4 +1,22 @@
 research:
+  regime:
+    enabled: true
+    min_pool_coverage: 3
+    min_volatility_20: 0.18
+    risk_on:
+      breadth_above_ma120_min: 0.60
+      return_20_min: 0.0
+      return_60_min: 0.0
+      drawdown_60_min: -0.08
+    risk_off:
+      breadth_above_ma120_max: 0.35
+      return_20_max: 0.0
+      return_60_max: 0.0
+      drawdown_60_max: -0.12
+      ma_distance_120_max: -0.03
+      volatility_20_min: 0.18
+  sample_split:
+    in_sample_ratio: 0.70
   candidates:
     - name: baseline_trend
       strategy_id: trend_momentum
