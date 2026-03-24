@@ -106,7 +106,7 @@ def run_research_governance_pipeline(
         report_dir=Path("reports/research"),
         output_dir=Path("reports/research/summary"),
     )
-    portal_result = build_report_portal(
+    build_report_portal(
         daily_dir=Path("reports/daily"),
         research_dir=Path("reports/research"),
         output_dir=Path("reports"),
@@ -134,6 +134,11 @@ def run_research_governance_pipeline(
         summary_result=summary_result,
         cycle_result=cycle_result,
         governance_review_path=governance_review_path,
+    )
+    portal_result = build_report_portal(
+        daily_dir=Path("reports/daily"),
+        research_dir=Path("reports/research"),
+        output_dir=Path("reports"),
     )
     return {
         "research_result": research_result,

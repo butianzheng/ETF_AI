@@ -148,6 +148,7 @@ def test_run_research_governance_pipeline_happy_path(tmp_path, monkeypatch):
         "portal",
         "governance_cycle",
         "repo_close",
+        "portal",
     ]
     assert result["research_result"]["report_paths"]["json"] == str(research_json)
     assert result["summary_result"]["output_paths"]["json"] == str(summary_json)
@@ -350,3 +351,97 @@ def test_run_research_governance_pipeline_governance_sequence(tmp_path, monkeypa
         "governance_review_artifact",
         "pipeline_summary_artifact",
     ]
+
+
+def test_run_research_governance_pipeline_portal_reflects_current_decision(tmp_path, monkeypatch):
+    from src.governance.automation import GovernanceCycleResult
+    from src.governance.models import GovernanceDecision
+    import src.governance_pipeline as pipeline
+
+    class FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 3, 24)
+
+    class DummyGovernanceConfig:
+        pass
+
+    class DummyStrategyConfig:
+        governance = DummyGovernanceConfig()
+
+    research_json = tmp_path / "reports" / "research" / "2026-03-11.json"
+    research_json.parent.mkdir(parents=True, exist_ok=True)
+    research_json.write_text("{}", encoding="utf-8")
+
+    summary_json = tmp_path / "reports" / "research" / "summary" / "research_summary.json"
+    summary_json.parent.mkdir(parents=True, exist_ok=True)
+    summary_json.write_text("{}", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "date", FakeDate)
+    monkeypatch.setattr(
+        pipeline,
+        "run_research_pipeline",
+        lambda **kwargs: {
+            "report_paths": {
+                "json": str(research_json),
+            },
+            "portal_paths": {},
+        },
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "aggregate_research_reports",
+        lambda **kwargs: {
+            "output_paths": {
+                "json": str(summary_json),
+            }
+        },
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_strategy_config",
+        lambda: DummyStrategyConfig(),
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_production_strategy_id",
+        lambda: "trend_momentum",
+    )
+
+    def fake_run_governance_cycle(**kwargs):
+        draft = GovernanceDecision(
+            decision_date=FakeDate.today(),
+            current_strategy_id="trend_momentum",
+            selected_strategy_id="risk_adjusted_momentum",
+            previous_strategy_id="trend_momentum",
+            fallback_strategy_id="trend_momentum",
+            decision_type="switch",
+            review_status="ready",
+            blocked_reasons=[],
+            reason_codes=["CHALLENGER_PROMOTED"],
+            evidence={"source": "cycle"},
+        )
+        saved = kwargs["repo"].save_draft(draft)
+        return GovernanceCycleResult(
+            decision=saved,
+            summary_hash="summary-hash-portal-001",
+            created_new=True,
+        )
+
+    monkeypatch.setattr(pipeline, "run_governance_cycle", fake_run_governance_cycle)
+
+    result = pipeline.run_research_governance_pipeline(
+        start_date=date(2025, 12, 1),
+        end_date=date(2026, 3, 11),
+    )
+
+    decision_id = result["cycle_result"].decision.id
+    assert decision_id is not None
+    assert result["portal_result"]["governance_summary"]["latest_decision"]["id"] == decision_id
+    assert result["portal_result"]["governance_summary"]["latest_decision"]["review_status"] == "ready"
+
+    portal_summary_path = Path(result["portal_result"]["output_paths"]["json"])
+    portal_payload = json.loads(portal_summary_path.read_text(encoding="utf-8"))
+    assert portal_payload["governance_summary"]["latest_decision"]["id"] == decision_id
+    assert portal_payload["governance_summary"]["latest_decision"]["review_status"] == "ready"
