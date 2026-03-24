@@ -1101,3 +1101,51 @@ research:
     assert calls["initial_capital"] == pytest.approx(123456.78)
     assert calls["fee_rate"] == pytest.approx(0.0025)
     assert calls["log_level"] == "DEBUG"
+
+
+def test_research_governance_pipeline_cli_main_uses_shared_candidate_specs_loader(
+    tmp_path, monkeypatch
+):
+    import scripts.run_research_governance_pipeline as cli
+
+    calls: dict[str, object] = {}
+    sentinel_specs = [
+        {
+            "name": "sentinel",
+            "strategy_id": "trend_momentum",
+            "description": "x",
+            "overrides": {},
+        }
+    ]
+    candidate_config = tmp_path / "research_candidates.yaml"
+    candidate_config.write_text("research:\n  candidates: []\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli, "load_candidate_specs", lambda path: sentinel_specs, raising=False)
+    monkeypatch.setattr(
+        cli,
+        "run_research_governance_pipeline",
+        lambda **kwargs: calls.update(kwargs)
+        or {
+            "research_result": {"report_paths": {}},
+            "summary_result": {"output_paths": {}},
+            "cycle_result": SimpleNamespace(
+                decision=SimpleNamespace(id=1, review_status="ready", blocked_reasons=[])
+            ),
+            "pipeline_summary_path": "reports/governance/pipeline/2026-03-24.json",
+            "exit_code": 0,
+        },
+    )
+
+    exit_code = cli.main(
+        [
+            "--start-date",
+            "2025-12-01",
+            "--end-date",
+            "2026-03-24",
+            "--candidate-config",
+            str(candidate_config),
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["candidate_specs"] is sentinel_specs

@@ -7,14 +7,12 @@ from pathlib import Path
 import sys
 from typing import Any
 
-import yaml
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.core.config import ResearchConfig
 from src.governance_pipeline import run_research_governance_pipeline
+from src.research_candidate_config import load_candidate_specs
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -35,16 +33,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _load_candidate_specs(candidate_config: str | None) -> list[dict[str, Any]] | None:
-    if not candidate_config:
-        return None
-    config_path = Path(candidate_config)
-    with open(config_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    candidates = ResearchConfig(**data["research"]).candidates
-    return [candidate.model_dump() for candidate in candidates]
-
-
 def _format_blocked_reasons(blocked_reasons: Any) -> str:
     if blocked_reasons is None:
         return "[]"
@@ -59,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
         result = run_research_governance_pipeline(
             start_date=date.fromisoformat(args.start_date),
             end_date=date.fromisoformat(args.end_date),
-            candidate_specs=_load_candidate_specs(args.candidate_config),
+            candidate_specs=load_candidate_specs(args.candidate_config),
             initial_capital=args.initial_capital,
             fee_rate=args.fee_rate,
             log_level=args.log_level,

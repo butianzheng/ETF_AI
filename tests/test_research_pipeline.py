@@ -1,4 +1,5 @@
 import json
+import argparse
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -149,3 +150,41 @@ research:
             "overrides": {"strategy_params": {"volatility_penalty_weight": 0.8}},
         }
     ]
+
+
+def test_run_research_main_uses_shared_candidate_specs_loader(tmp_path, monkeypatch):
+    import scripts.run_research as cli
+
+    forwarded: dict[str, object] = {}
+    sentinel_specs = [
+        {
+            "name": "sentinel",
+            "strategy_id": "trend_momentum",
+            "description": "x",
+            "overrides": {},
+        }
+    ]
+    candidate_config = tmp_path / "research_candidates.yaml"
+    candidate_config.write_text("research:\n  candidates: []\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        cli,
+        "_parse_args",
+        lambda: argparse.Namespace(
+            start_date="2025-12-01",
+            end_date="2026-03-24",
+            initial_capital=123456.78,
+            fee_rate=0.0025,
+            candidate_config=str(candidate_config),
+            log_level="DEBUG",
+        ),
+    )
+    monkeypatch.setattr(cli, "load_candidate_specs", lambda path: sentinel_specs, raising=False)
+    monkeypatch.setattr(cli, "run_research_pipeline", lambda **kwargs: forwarded.update(kwargs))
+
+    cli.main()
+
+    assert forwarded["candidate_specs"] is sentinel_specs
+    assert forwarded["initial_capital"] == 123456.78
+    assert forwarded["fee_rate"] == 0.0025
+    assert forwarded["log_level"] == "DEBUG"

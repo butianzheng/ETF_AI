@@ -3,14 +3,12 @@ import argparse
 from datetime import date, timedelta
 from pathlib import Path
 import sys
-from typing import Any, Dict, List
-import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.core.config import ResearchConfig
+from src.research_candidate_config import load_candidate_specs
 from src.research_pipeline import run_research_pipeline
 
 
@@ -27,22 +25,12 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _load_candidate_specs(candidate_config: str | None) -> List[Dict[str, Any]] | None:
-    if not candidate_config:
-        return None
-    config_path = Path(candidate_config)
-    with open(config_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    candidates = ResearchConfig(**data["research"]).candidates
-    return [candidate.model_dump() for candidate in candidates]
-
-
 def main() -> None:
     args = _parse_args()
     run_research_pipeline(
         start_date=date.fromisoformat(args.start_date),
         end_date=date.fromisoformat(args.end_date),
-        candidate_specs=_load_candidate_specs(args.candidate_config),
+        candidate_specs=load_candidate_specs(args.candidate_config),
         initial_capital=args.initial_capital,
         fee_rate=args.fee_rate,
         log_level=args.log_level,
