@@ -367,8 +367,8 @@ class GovernanceRepository(BaseRepository):
             previous_strategy_id=latest.selected_strategy_id,
             fallback_strategy_id=latest.fallback_strategy_id,
             approved_by=approved_by,
-            review_status="ready",
-            blocked_reasons_json=[],
+            review_status=latest.review_status,
+            blocked_reasons_json=latest.blocked_reasons_json or [],
             reason_codes_json=["MANUAL_ROLLBACK"],
             evidence_json={"reason": reason},
         )
