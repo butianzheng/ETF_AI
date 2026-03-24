@@ -272,6 +272,7 @@ def test_research_governance_pipeline_cli_smoke_happy_path(tmp_path, monkeypatch
 def test_research_governance_pipeline_cli_smoke_blocked_returns_zero_by_default(
     tmp_path,
     monkeypatch,
+    capsys,
 ):
     import scripts.run_research_governance_pipeline as cli
     import src.governance_pipeline as pipeline
@@ -303,7 +304,15 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_zero_by_default(
         ]
     )
 
+    stdout = capsys.readouterr().out
     assert exit_code == 0
+    assert "research_report=" in stdout
+    assert "summary_json=" in stdout
+    assert re.search(
+        r"decision_id=\d+ review_status=blocked blocked_reasons=SELECTED_STRATEGY_REGIME_MISMATCH",
+        stdout,
+    )
+    assert "pipeline_summary=" in stdout
     assert Path("reports/research/2026-03-24.json").exists()
     assert Path("reports/research/2026-03-24.md").exists()
     assert Path("reports/research/2026-03-24.csv").exists()
@@ -317,11 +326,15 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_zero_by_default(
     )
     assert payload["final_decision"]["review_status"] == "blocked"
     assert payload["final_decision"]["blocked_reasons"] == ["SELECTED_STRATEGY_REGIME_MISMATCH"]
+    review_payload = json.loads(Path("reports/governance/2026-03-24.json").read_text(encoding="utf-8"))
+    assert review_payload["review_status"] == "blocked"
+    assert review_payload["blocked_reasons"] == ["SELECTED_STRATEGY_REGIME_MISMATCH"]
 
 
 def test_research_governance_pipeline_cli_smoke_blocked_returns_two_with_fail_flag(
     tmp_path,
     monkeypatch,
+    capsys,
 ):
     import scripts.run_research_governance_pipeline as cli
     import src.governance_pipeline as pipeline
@@ -354,7 +367,15 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_two_with_fail_fl
         ]
     )
 
+    stdout = capsys.readouterr().out
     assert exit_code == 2
+    assert "research_report=" in stdout
+    assert "summary_json=" in stdout
+    assert re.search(
+        r"decision_id=\d+ review_status=blocked blocked_reasons=SELECTED_STRATEGY_REGIME_MISMATCH",
+        stdout,
+    )
+    assert "pipeline_summary=" in stdout
     assert Path("reports/research/2026-03-24.json").exists()
     assert Path("reports/research/2026-03-24.md").exists()
     assert Path("reports/research/2026-03-24.csv").exists()
@@ -368,3 +389,6 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_two_with_fail_fl
     )
     assert payload["final_decision"]["review_status"] == "blocked"
     assert payload["final_decision"]["blocked_reasons"] == ["SELECTED_STRATEGY_REGIME_MISMATCH"]
+    review_payload = json.loads(Path("reports/governance/2026-03-24.json").read_text(encoding="utf-8"))
+    assert review_payload["review_status"] == "blocked"
+    assert review_payload["blocked_reasons"] == ["SELECTED_STRATEGY_REGIME_MISMATCH"]
