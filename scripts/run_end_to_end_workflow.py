@@ -14,7 +14,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scripts.check_governance_health import check_governance_health
 from src.core.config import ConfigLoader
+from src.governance.publisher import publish_decision
 from src.governance_pipeline import run_research_governance_pipeline
+from src.main import run_daily_pipeline
 from src.research_candidate_config import load_candidate_specs
 from src.storage.repositories import GovernanceRepository
 
@@ -30,7 +32,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--fee-rate", type=float, default=0.001, help="手续费率")
     parser.add_argument("--log-level", default="INFO", help="日志级别")
     parser.add_argument("--fail-on-blocked", action="store_true", help="当治理结果为 blocked 时返回退出码 2")
-    parser.add_argument("--run-daily", action="store_true", help="预留参数，Task 1 不执行 daily run")
+    parser.add_argument("--run-daily", action="store_true", help="是否在 research-governance 前执行 daily run")
+    parser.add_argument("--daily-date", default=None, help="daily run 交易日期，格式 YYYY-MM-DD，默认今天")
+    parser.add_argument("--daily-execute", action="store_true", help="daily run 通过检查后执行调仓")
+    parser.add_argument("--daily-manual-approve", action="store_true", help="daily run 标记人工确认")
+    parser.add_argument("--daily-available-cash", type=float, default=100000.0, help="daily run 可用现金")
     parser.add_argument("--publish", action="store_true", help="预留参数，显式授权后才允许发布")
     parser.add_argument("--approved-by", help="发布审批人")
     parser.add_argument(
@@ -58,10 +64,11 @@ def _health_payload(result: Any) -> dict[str, Any]:
     }
 
 
-def _write_health_report(result: Any) -> str:
+def _write_health_report(result: Any, stage: str | None = None) -> str:
     output_dir = Path("reports/governance/health")
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{date.today().isoformat()}.json"
+    suffix = f"_{stage}" if stage else ""
+    output_path = output_dir / f"{date.today().isoformat()}{suffix}.json"
     output_path.write_text(
         json.dumps(_health_payload(result), ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -115,6 +122,57 @@ def _error_payload(error: Exception) -> dict[str, str]:
     }
 
 
+def _daily_payload(result: Any) -> dict[str, Any]:
+    payload = {
+        "executed": True,
+        "status": None,
+        "artifacts": {},
+    }
+    if not isinstance(result, dict):
+        return payload
+    payload["status"] = result.get("status")
+    payload["artifacts"] = {
+        "report_paths": result.get("report_paths", {}),
+        "portal_paths": result.get("portal_paths", {}),
+    }
+    return payload
+
+
+def _decision_payload(decision: Any) -> dict[str, Any]:
+    if decision is None:
+        return {}
+    if hasattr(decision, "model_dump"):
+        return decision.model_dump(mode="json")
+    if isinstance(decision, dict):
+        return dict(decision)
+
+    fields = (
+        "id",
+        "decision_date",
+        "current_strategy_id",
+        "selected_strategy_id",
+        "previous_strategy_id",
+        "fallback_strategy_id",
+        "decision_type",
+        "status",
+        "approved_by",
+        "source_report_date",
+        "review_status",
+        "blocked_reasons",
+        "reason_codes",
+    )
+    payload: dict[str, Any] = {}
+    for field in fields:
+        if not hasattr(decision, field):
+            continue
+        value = getattr(decision, field)
+        if isinstance(value, date):
+            payload[field] = value.isoformat()
+        else:
+            payload[field] = value
+    return payload
+
+
 def _failed_summary_payload(
     *,
     failed_step: str,
@@ -122,6 +180,7 @@ def _failed_summary_payload(
     daily_result: dict[str, Any],
     research_governance_result: dict[str, Any],
     health_check_result: dict[str, Any],
+    post_publish_health_check_result: dict[str, Any],
     publish_result: dict[str, Any],
 ) -> dict[str, Any]:
     return {
@@ -131,6 +190,7 @@ def _failed_summary_payload(
         "daily_result": daily_result,
         "research_governance_result": research_governance_result,
         "health_check_result": health_check_result,
+        "post_publish_health_check_result": post_publish_health_check_result,
         "publish_result": publish_result,
         "exit_code": 1,
     }
@@ -141,7 +201,32 @@ def main(argv: list[str] | None = None) -> int:
     daily_result = {"executed": False, "artifacts": {}}
     research_governance_result: dict[str, Any] = {}
     health_check_result: dict[str, Any] = {"executed": False, "report_path": None}
+    post_publish_health_check_result: dict[str, Any] = {"executed": False, "report_path": None}
     publish_result: dict[str, Any] = {"executed": False, "decision": None}
+
+    if args.run_daily:
+        try:
+            daily_pipeline_result = run_daily_pipeline(
+                as_of_date=date.fromisoformat(args.daily_date) if args.daily_date else None,
+                log_level=args.log_level,
+                execute_trade=args.daily_execute,
+                manual_approved=args.daily_manual_approve,
+                available_cash=args.daily_available_cash,
+            )
+            daily_result = _daily_payload(daily_pipeline_result)
+        except Exception as error:
+            _write_workflow_summary(
+                _failed_summary_payload(
+                    failed_step="daily_run",
+                    error=error,
+                    daily_result=daily_result,
+                    research_governance_result=research_governance_result,
+                    health_check_result=health_check_result,
+                    post_publish_health_check_result=post_publish_health_check_result,
+                    publish_result=publish_result,
+                )
+            )
+            return 1
 
     try:
         pipeline_result = run_research_governance_pipeline(
@@ -161,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
                 daily_result=daily_result,
                 research_governance_result=research_governance_result,
                 health_check_result=health_check_result,
+                post_publish_health_check_result=post_publish_health_check_result,
                 publish_result=publish_result,
             )
         )
@@ -203,6 +289,7 @@ def main(argv: list[str] | None = None) -> int:
                     daily_result=daily_result,
                     research_governance_result=research_governance_result,
                     health_check_result=health_check_result,
+                    post_publish_health_check_result=post_publish_health_check_result,
                     publish_result=publish_result,
                 )
             )
@@ -212,16 +299,81 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.publish and blocked:
         publish_result["publish_blocked_reason"] = "governance_review_status_blocked"
+    elif args.publish and review_status == "ready":
+        repo = GovernanceRepository()
+        policy_loader = ConfigLoader(str(PROJECT_ROOT / "config"))
+        try:
+            try:
+                published_decision = publish_decision(
+                    decision_id=research_governance_result.get("decision_id"),
+                    approved_by=args.approved_by,
+                    repo=repo,
+                    policy=policy_loader.load_strategy_config().governance,
+                )
+            except Exception as error:
+                _write_workflow_summary(
+                    _failed_summary_payload(
+                        failed_step="publish",
+                        error=error,
+                        daily_result=daily_result,
+                        research_governance_result=research_governance_result,
+                        health_check_result=health_check_result,
+                        post_publish_health_check_result=post_publish_health_check_result,
+                        publish_result=publish_result,
+                    )
+                )
+                return 1
+
+            publish_result = {
+                "executed": True,
+                "decision": _decision_payload(published_decision),
+            }
+
+            try:
+                post_health_result = check_governance_health(
+                    report_dir="reports/daily",
+                    repo=repo,
+                    policy=policy_loader.load_strategy_config().governance,
+                    create_rollback_draft=args.create_rollback_draft,
+                    summary_path=(
+                        pipeline_result.get("summary_result", {})
+                        .get("output_paths", {})
+                        .get("json", "reports/research/summary/research_summary.json")
+                    ),
+                )
+                post_publish_health_check_result = {
+                    "executed": True,
+                    "report_path": None,
+                    **_health_payload(post_health_result),
+                }
+                post_health_report_path = _write_health_report(post_health_result, stage="post_publish")
+                post_publish_health_check_result["report_path"] = post_health_report_path
+            except Exception as error:
+                _write_workflow_summary(
+                    _failed_summary_payload(
+                        failed_step="post_publish_health_check",
+                        error=error,
+                        daily_result=daily_result,
+                        research_governance_result=research_governance_result,
+                        health_check_result=health_check_result,
+                        post_publish_health_check_result=post_publish_health_check_result,
+                        publish_result=publish_result,
+                    )
+                )
+                return 1
+        finally:
+            repo.close()
 
     summary_payload = {
         "daily_result": daily_result,
         "research_governance_result": research_governance_result,
         "health_check_result": health_check_result,
+        "post_publish_health_check_result": post_publish_health_check_result,
         "publish_result": publish_result,
         "exit_code": blocked_exit_code,
     }
     _write_workflow_summary(summary_payload)
-    print("publish_executed=false")
+    print(f"publish_executed={'true' if publish_result['executed'] else 'false'}")
     return blocked_exit_code
 
 
