@@ -211,12 +211,45 @@
 
 - 最终聚焦回归：`pytest tests/test_research_pipeline.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`24 passed in 1.41s`）
 
+## 2026-03-25 End-to-End Workflow Runner
+
+### 执行清单（立项）
+- [x] Task 1：编排脚本骨架、参数校验与默认 no-publish
+- [x] Task 2：blocked / fatal / summary 语义与退出码优先级
+- [x] Task 3：可选 daily / publish / post-publish health
+- [x] Task 4：README / 任务跟踪 / 最终聚焦回归
+
+### 规划产物
+
+- Spec: `docs/superpowers/specs/2026-03-25-end-to-end-workflow-runner-design.md`
+- Plan: `docs/superpowers/plans/2026-03-25-end-to-end-workflow-runner-implementation.md`
+
+### 当前进度
+
+- Task 1 初始提交：`6e58b30`
+- Task 1 修复提交：`fa44bdd`
+- Task 2 初始提交：`46b794b`
+- Task 2 修复提交：`7a8012c`
+- Task 3 提交：`5726e79`
+- 审查状态：
+  - Task 1 spec compliance review：已通过
+  - Task 1 code quality review：修复后已通过
+  - Task 2 spec compliance review：修复后已通过
+  - Task 2 code quality review：修复后已通过
+  - Task 3 spec compliance review：修复后已通过
+  - Task 3 code quality review：修复后已通过
+- fresh 验证：
+  - Task 1：`pytest tests/test_end_to_end_workflow_runner.py -q` 通过（`4 passed in 0.65s`）
+  - Task 2：`pytest tests/test_end_to_end_workflow_runner.py -q` 通过（`9 passed in 0.69s`）
+  - Task 3：`pytest tests/test_end_to_end_workflow_runner.py -q` 通过（`12 passed in 0.63s`）
+  - Task 4：`pytest tests/test_end_to_end_workflow_runner.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py tests/test_pipeline_e2e.py -q` 通过（`33 passed in 1.04s`）
+
 ## 下一步行动
 
-1. 补充端到端脚本，把 Agent 输出接入日报/研究流
-2. 修正文档与代码的剩余不一致项（重点同步 CLI 与 pipeline 行为说明）
-3. 增加更完整的集成测试与示例脚本
-4. 规划下一轮研究-治理联调验证与发布前检查清单
+1. 提交 Task 4 文档更新：`docs: document end to end workflow runner`
+2. 对整个端到端 runner 子项目做最终收口检查
+3. 按 `finishing-a-development-branch` 提供后续处理选项
+4. 进入下一轮研究-治理-发布联调或自动化扩展
 
 ## 2026-03-12 项目扫描
 

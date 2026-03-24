@@ -131,6 +131,58 @@ python scripts/rollback_governance_decision.py --approved-by your_name --reason 
 - `rollback_governance_decision.py` 会把生产策略回退到上一稳定策略或 fallback
 - 单一 ETF 实盘场景下默认不启用自动 publish，最终切换仍保留人工门禁
 
+### 11. 统一端到端编排入口
+
+默认安全模式：
+
+```bash
+python scripts/run_end_to_end_workflow.py --start-date 2025-12-01 --end-date 2026-03-24
+```
+
+说明：
+- 默认只执行 `research-governance + pre-publish health check`
+- 默认不跑 daily
+- 默认不 publish
+
+如需把 daily 纳入同一入口：
+
+```bash
+python scripts/run_end_to_end_workflow.py \
+  --start-date 2025-12-01 \
+  --end-date 2026-03-24 \
+  --run-daily \
+  --daily-date 2026-03-24 \
+  --daily-manual-approve \
+  --daily-execute \
+  --daily-available-cash 100000
+```
+
+如需显式授权发布：
+
+```bash
+python scripts/run_end_to_end_workflow.py \
+  --start-date 2025-12-01 \
+  --end-date 2026-03-24 \
+  --publish \
+  --approved-by your_name
+```
+
+说明：
+- 只有 `--publish --approved-by <name>` 才会执行 publish
+- 若治理结果是 `blocked`，即使显式传了 `--publish` 也会跳过发布，并在 summary 中写入 `publish_blocked_reason`
+- publish 成功后会自动再跑一次 post-publish health check
+
+输出与退出码：
+- workflow summary 固定写到 `reports/workflow/end_to_end_workflow_summary.json`
+- `stdout` 会输出 `publish_executed=true|false`
+- `exit_code=0`：成功，或 `blocked` 但未启用 `--fail-on-blocked`
+- `exit_code=2`：`blocked` 且启用了 `--fail-on-blocked`
+- `exit_code=1`：fatal，包括 `research-governance`、`health check`、`publish`、`post-publish health check`
+- summary 会同时保留：
+  - `health_check_result`（publish 前）
+  - `post_publish_health_check_result`（publish 后，若执行）
+  - `publish_result`
+
 ## 项目结构
 
 ```
