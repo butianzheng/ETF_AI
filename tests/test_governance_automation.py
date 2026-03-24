@@ -2,6 +2,7 @@ import json
 from datetime import date
 from datetime import timedelta
 
+from src.core.config import GovernanceAutomationConfig
 from src.core.config import GovernanceConfig
 from src.governance.models import GovernanceDecision
 from src.governance.models import GovernanceIncident
@@ -189,6 +190,36 @@ def test_run_governance_cycle_deduplicates_same_summary(tmp_path):
         )
 
         assert first.decision.id == second.decision.id
+    finally:
+        repo.close()
+
+
+def test_run_governance_cycle_does_not_reuse_draft_when_current_strategy_changes(tmp_path):
+    from src.governance.automation import run_governance_cycle
+    from src.storage.repositories import GovernanceRepository
+
+    repo = GovernanceRepository()
+    try:
+        summary_path = _write_summary(tmp_path, report_date=date.today())
+
+        first = run_governance_cycle(
+            summary_path=summary_path,
+            policy=GovernanceConfig(),
+            repo=repo,
+            current_strategy_id="trend_momentum",
+            current_regime_snapshot=_build_snapshot("risk_on"),
+        )
+        second = run_governance_cycle(
+            summary_path=summary_path,
+            policy=GovernanceConfig(),
+            repo=repo,
+            current_strategy_id="risk_adjusted_momentum",
+            current_regime_snapshot=_build_snapshot("risk_on"),
+        )
+
+        assert first.decision.id != second.decision.id
+        assert second.decision.current_strategy_id == "risk_adjusted_momentum"
+        assert second.decision.decision_type == "keep"
     finally:
         repo.close()
 
@@ -424,5 +455,51 @@ def test_run_governance_cycle_builds_uncertain_snapshot_when_current_regime_is_u
         assert result.decision.evidence["regime_gate"]["gate_status"] == "skipped"
         assert result.decision.evidence["regime_gate"]["skip_reason"] == "CURRENT_REGIME_UNCERTAIN"
         assert "INSUFFICIENT_POOL_COVERAGE" in result.decision.evidence["regime_gate"]["current_regime"]["reason_codes"]
+    finally:
+        repo.close()
+
+
+def test_run_governance_cycle_skips_regime_resolution_when_gate_disabled_and_refreshes_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    from src.governance import automation
+    from src.storage.repositories import GovernanceRepository
+
+    repo = GovernanceRepository()
+    try:
+        summary_path = _write_summary(tmp_path, report_date=date.today())
+
+        first = automation.run_governance_cycle(
+            summary_path=summary_path,
+            policy=GovernanceConfig(),
+            repo=repo,
+            current_strategy_id="trend_momentum",
+            current_regime_snapshot=_build_snapshot("risk_off"),
+        )
+        assert first.decision.evidence["regime_gate"]["gate_status"] == "blocked"
+
+        monkeypatch.setattr(
+            automation,
+            "resolve_current_regime",
+            lambda **_: (_ for _ in ()).throw(RuntimeError("should not be called")),
+        )
+        policy = GovernanceConfig(
+            automation=GovernanceAutomationConfig(
+                regime_gate={"enabled": False},
+            ),
+        )
+        second = automation.run_governance_cycle(
+            summary_path=summary_path,
+            policy=policy,
+            repo=repo,
+            current_strategy_id="trend_momentum",
+        )
+
+        assert second.decision.id == first.decision.id
+        assert second.decision.review_status == "ready"
+        assert "SELECTED_STRATEGY_REGIME_MISMATCH" not in second.decision.blocked_reasons
+        assert second.decision.evidence["regime_gate"]["gate_status"] == "skipped"
+        assert second.decision.evidence["regime_gate"]["skip_reason"] == "REGIME_GATE_DISABLED"
     finally:
         repo.close()

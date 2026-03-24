@@ -58,7 +58,7 @@ def create_or_update_governance_draft(
 ) -> GovernanceCycleResult:
     summary_hash = _compute_summary_hash(summary)
     existing = repo.find_draft_by_summary_hash(summary_hash)
-    if existing is not None:
+    if existing is not None and existing.current_strategy_id == current_strategy_id:
         return GovernanceCycleResult(
             decision=existing,
             summary_hash=summary_hash,
@@ -157,6 +157,25 @@ def _regime_gate_evidence(
     return evidence
 
 
+def _disabled_regime_gate_evidence(
+    selected_strategy_id: str,
+    gate_config: GovernanceRegimeGateConfig,
+) -> dict[str, Any]:
+    return {
+        "gate_status": "skipped",
+        "blocked_reason": None,
+        "skip_reason": "REGIME_GATE_DISABLED",
+        "current_regime": None,
+        "current_regime_stats": None,
+        "worst_regime_stats": None,
+        "selected_strategy_id": selected_strategy_id,
+        "sample_thresholds": {
+            "min_appearances": gate_config.min_appearances,
+            "min_avg_observation_count": gate_config.min_avg_observation_count,
+        },
+    }
+
+
 def run_governance_cycle(
     summary_path: str | Path,
     repo: GovernanceRepository,
@@ -181,25 +200,33 @@ def run_governance_cycle(
         repo=repo,
         policy=policy,
     )
-    regime_gate_result = evaluate_regime_gate(
-        summary=summary,
-        selected_strategy_id=result.decision.selected_strategy_id,
-        current_regime_snapshot=_resolve_regime_snapshot_or_uncertain(current_regime_snapshot),
-        gate_config=policy.automation.regime_gate,
-    )
-    evidence = {
-        **result.decision.evidence,
-        "regime_gate": _regime_gate_evidence(
+    if policy.automation.regime_gate.enabled:
+        regime_gate_result = evaluate_regime_gate(
+            summary=summary,
+            selected_strategy_id=result.decision.selected_strategy_id,
+            current_regime_snapshot=_resolve_regime_snapshot_or_uncertain(current_regime_snapshot),
+            gate_config=policy.automation.regime_gate,
+        )
+        regime_gate_evidence = _regime_gate_evidence(
             regime_gate_result=regime_gate_result,
             selected_strategy_id=result.decision.selected_strategy_id,
             gate_config=policy.automation.regime_gate,
-        ),
+        )
+        if (
+            regime_gate_result.gate_status == "blocked"
+            and "SELECTED_STRATEGY_REGIME_MISMATCH" not in blocked_reasons
+        ):
+            blocked_reasons.append("SELECTED_STRATEGY_REGIME_MISMATCH")
+    else:
+        regime_gate_evidence = _disabled_regime_gate_evidence(
+            selected_strategy_id=result.decision.selected_strategy_id,
+            gate_config=policy.automation.regime_gate,
+        )
+
+    evidence = {
+        **result.decision.evidence,
+        "regime_gate": regime_gate_evidence,
     }
-    if (
-        regime_gate_result.gate_status == "blocked"
-        and "SELECTED_STRATEGY_REGIME_MISMATCH" not in blocked_reasons
-    ):
-        blocked_reasons.append("SELECTED_STRATEGY_REGIME_MISMATCH")
 
     review_status = "blocked" if blocked_reasons else "ready"
     reviewed = repo.set_review_status(
