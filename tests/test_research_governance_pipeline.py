@@ -637,6 +637,19 @@ def test_run_research_governance_pipeline_blocked_exit_two_when_fail_on_blocked_
     )
 
     assert result["exit_code"] == 2
+    governance_cycle_path = Path(result["governance_cycle_path"])
+    governance_review_path = Path(result["governance_review_path"])
+    pipeline_summary_path = Path(result["pipeline_summary_path"])
+
+    assert governance_cycle_path.exists()
+    assert governance_review_path.exists()
+    assert pipeline_summary_path.exists()
+
+    pipeline_payload = json.loads(pipeline_summary_path.read_text(encoding="utf-8"))
+    assert pipeline_payload["final_decision"]["review_status"] == "blocked"
+    assert pipeline_payload["final_decision"]["blocked_reasons"] == [
+        "SELECTED_STRATEGY_REGIME_MISMATCH"
+    ]
 
 
 def test_run_research_governance_pipeline_writes_partial_summary_before_raising_fatal(
