@@ -297,10 +297,15 @@ def test_run_research_governance_pipeline_governance_sequence(tmp_path, monkeypa
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(pipeline, "date", FakeDate)
+
+    def fake_run_research_pipeline(**kwargs):
+        pipeline.date.today()
+        return {"report_paths": {}, "portal_paths": {}}
+
     monkeypatch.setattr(
         pipeline,
         "run_research_pipeline",
-        lambda **kwargs: {"report_paths": {}, "portal_paths": {}},
+        fake_run_research_pipeline,
     )
     monkeypatch.setattr(
         pipeline,
@@ -595,10 +600,15 @@ def test_run_research_governance_pipeline_blocked_exit_two_when_fail_on_blocked_
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(pipeline, "date", FakeDate)
+
+    def fake_run_research_pipeline(**kwargs):
+        pipeline.date.today()
+        return {"report_paths": {}, "portal_paths": {}}
+
     monkeypatch.setattr(
         pipeline,
         "run_research_pipeline",
-        lambda **kwargs: {"report_paths": {}, "portal_paths": {}},
+        fake_run_research_pipeline,
     )
     monkeypatch.setattr(
         pipeline,
@@ -658,16 +668,28 @@ def test_run_research_governance_pipeline_writes_partial_summary_before_raising_
     import src.governance_pipeline as pipeline
 
     class FakeDate(date):
+        _today_values = [
+            date(2026, 3, 24),
+            date(2026, 3, 25),
+        ]
+
         @classmethod
         def today(cls):
-            return cls(2026, 3, 24)
+            if cls._today_values:
+                return cls._today_values.pop(0)
+            return date(2026, 3, 25)
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(pipeline, "date", FakeDate)
+
+    def fake_run_research_pipeline(**kwargs):
+        pipeline.date.today()
+        return {"report_paths": {}, "portal_paths": {}}
+
     monkeypatch.setattr(
         pipeline,
         "run_research_pipeline",
-        lambda **kwargs: {"report_paths": {}, "portal_paths": {}},
+        fake_run_research_pipeline,
     )
 
     def raise_summary_error(**kwargs):
@@ -681,13 +703,227 @@ def test_run_research_governance_pipeline_writes_partial_summary_before_raising_
             end_date=date(2026, 3, 11),
         )
 
-    partial_summary_path = tmp_path / "reports" / "governance" / "pipeline" / "2026-03-24.json"
+    partial_summary_path = tmp_path / "reports" / "governance" / "pipeline" / "2026-03-25.json"
     assert partial_summary_path.exists()
     payload = json.loads(partial_summary_path.read_text(encoding="utf-8"))
     assert payload["status"] == "failed"
     assert payload["failed_step"] == "summary"
     assert payload["error"]["type"] == "RuntimeError"
     assert payload["error"]["message"] == "summary step fatal"
+    assert payload["governance_run_date"] == "2026-03-25"
 
-    assert not (tmp_path / "reports" / "governance" / "cycle" / "2026-03-24.json").exists()
-    assert not (tmp_path / "reports" / "governance" / "2026-03-24.json").exists()
+    assert not (tmp_path / "reports" / "governance" / "cycle" / "2026-03-25.json").exists()
+    assert not (tmp_path / "reports" / "governance" / "2026-03-25.json").exists()
+
+
+def test_run_research_governance_pipeline_cross_midnight_uses_governance_stage_date_for_artifacts(
+    tmp_path, monkeypatch
+):
+    from src.governance.automation import GovernanceCycleResult
+    from src.governance.models import GovernanceDecision
+    import src.governance_pipeline as pipeline
+
+    class FakeDate(date):
+        _today_values = [
+            date(2026, 3, 24),
+            date(2026, 3, 25),
+        ]
+
+        @classmethod
+        def today(cls):
+            if cls._today_values:
+                return cls._today_values.pop(0)
+            return date(2026, 3, 25)
+
+    class DummyGovernanceConfig:
+        pass
+
+    class DummyStrategyConfig:
+        governance = DummyGovernanceConfig()
+
+    summary_json = tmp_path / "reports" / "research" / "summary" / "research_summary.json"
+    summary_json.parent.mkdir(parents=True, exist_ok=True)
+    summary_json.write_text("{}", encoding="utf-8")
+
+    decision = GovernanceDecision(
+        id=21,
+        decision_date=date(2026, 3, 25),
+        current_strategy_id="trend_momentum",
+        selected_strategy_id="risk_adjusted_momentum",
+        previous_strategy_id="trend_momentum",
+        fallback_strategy_id="trend_momentum",
+        decision_type="switch",
+        review_status="ready",
+        blocked_reasons=[],
+        reason_codes=["CHALLENGER_PROMOTED"],
+        evidence={"source": "cycle"},
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "date", FakeDate)
+
+    def fake_run_research_pipeline(**kwargs):
+        pipeline.date.today()
+        return {"report_paths": {}, "portal_paths": {}}
+
+    monkeypatch.setattr(
+        pipeline,
+        "run_research_pipeline",
+        fake_run_research_pipeline,
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "aggregate_research_reports",
+        lambda **kwargs: {"output_paths": {"json": str(summary_json)}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "build_report_portal",
+        lambda **kwargs: {"output_paths": {}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "run_governance_cycle",
+        lambda **kwargs: GovernanceCycleResult(
+            decision=decision,
+            summary_hash="summary-hash-midnight",
+            created_new=True,
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_strategy_config",
+        lambda: DummyStrategyConfig(),
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_production_strategy_id",
+        lambda: "trend_momentum",
+    )
+
+    result = pipeline.run_research_governance_pipeline(
+        start_date=date(2025, 12, 1),
+        end_date=date(2026, 3, 11),
+    )
+
+    assert Path(result["governance_cycle_path"]).name == "2026-03-25.json"
+    assert Path(result["governance_review_path"]).name == "2026-03-25.json"
+    assert Path(result["pipeline_summary_path"]).name == "2026-03-25.json"
+    payload = json.loads(Path(result["pipeline_summary_path"]).read_text(encoding="utf-8"))
+    assert payload["governance_run_date"] == "2026-03-25"
+
+
+def test_run_research_governance_pipeline_post_governance_fatal_uses_governance_run_date_for_partial_summary(
+    tmp_path, monkeypatch
+):
+    from src.governance.automation import GovernanceCycleResult
+    from src.governance.models import GovernanceDecision
+    import src.governance_pipeline as pipeline
+
+    class FakeDate(date):
+        _today_values = [
+            date(2026, 3, 24),
+            date(2026, 3, 25),
+            date(2026, 3, 26),
+        ]
+
+        @classmethod
+        def today(cls):
+            if cls._today_values:
+                return cls._today_values.pop(0)
+            return date(2026, 3, 26)
+
+    class DummyGovernanceConfig:
+        pass
+
+    class DummyStrategyConfig:
+        governance = DummyGovernanceConfig()
+
+    summary_json = tmp_path / "reports" / "research" / "summary" / "research_summary.json"
+    summary_json.parent.mkdir(parents=True, exist_ok=True)
+    summary_json.write_text("{}", encoding="utf-8")
+
+    decision = GovernanceDecision(
+        id=22,
+        decision_date=date(2026, 3, 25),
+        current_strategy_id="trend_momentum",
+        selected_strategy_id="risk_adjusted_momentum",
+        previous_strategy_id="trend_momentum",
+        fallback_strategy_id="trend_momentum",
+        decision_type="switch",
+        review_status="ready",
+        blocked_reasons=[],
+        reason_codes=["CHALLENGER_PROMOTED"],
+        evidence={"source": "cycle"},
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "date", FakeDate)
+
+    def fake_run_research_pipeline(**kwargs):
+        pipeline.date.today()
+        return {"report_paths": {}, "portal_paths": {}}
+
+    monkeypatch.setattr(
+        pipeline,
+        "run_research_pipeline",
+        fake_run_research_pipeline,
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "aggregate_research_reports",
+        lambda **kwargs: {"output_paths": {"json": str(summary_json)}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "build_report_portal",
+        lambda **kwargs: {"output_paths": {}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "run_governance_cycle",
+        lambda **kwargs: GovernanceCycleResult(
+            decision=decision,
+            summary_hash="summary-hash-post-fatal",
+            created_new=True,
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_write_governance_cycle_artifact",
+        lambda run_date, cycle_result: tmp_path / "reports" / "governance" / "cycle" / "ok.json",
+    )
+
+    def raise_review_artifact_error(run_date, decision_payload):
+        raise RuntimeError("review artifact fatal")
+
+    monkeypatch.setattr(
+        pipeline,
+        "_write_governance_review_artifact",
+        raise_review_artifact_error,
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_strategy_config",
+        lambda: DummyStrategyConfig(),
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_production_strategy_id",
+        lambda: "trend_momentum",
+    )
+
+    with pytest.raises(RuntimeError, match="review artifact fatal"):
+        pipeline.run_research_governance_pipeline(
+            start_date=date(2025, 12, 1),
+            end_date=date(2026, 3, 11),
+        )
+
+    partial_summary_path = tmp_path / "reports" / "governance" / "pipeline" / "2026-03-25.json"
+    assert partial_summary_path.exists()
+    payload = json.loads(partial_summary_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["failed_step"] == "governance_review_artifact"
+    assert payload["error"]["type"] == "RuntimeError"
+    assert payload["error"]["message"] == "review artifact fatal"
+    assert payload["governance_run_date"] == "2026-03-25"

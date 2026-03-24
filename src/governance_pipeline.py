@@ -136,7 +136,7 @@ def run_research_governance_pipeline(
     log_level: str = "INFO",
     fail_on_blocked: bool = False,
 ) -> dict[str, Any]:
-    run_date = date.today()
+    governance_run_date: date | None = None
     current_step = "research"
     try:
         research_result = run_research_pipeline(
@@ -159,6 +159,7 @@ def run_research_governance_pipeline(
             output_dir=Path("reports"),
         )
 
+        governance_run_date = date.today()
         current_step = "governance_cycle"
         repo = GovernanceRepository()
         try:
@@ -173,13 +174,16 @@ def run_research_governance_pipeline(
             repo.close()
 
         current_step = "governance_cycle_artifact"
-        governance_cycle_path = _write_governance_cycle_artifact(run_date, cycle_result)
+        governance_cycle_path = _write_governance_cycle_artifact(governance_run_date, cycle_result)
         current_step = "governance_review_artifact"
-        governance_review_path = _write_governance_review_artifact(run_date, cycle_result.decision)
+        governance_review_path = _write_governance_review_artifact(
+            governance_run_date,
+            cycle_result.decision,
+        )
         current_step = "pipeline_summary"
         pipeline_summary_path = _write_pipeline_summary_artifact(
             research_end_date=end_date,
-            governance_run_date=run_date,
+            governance_run_date=governance_run_date,
             research_result=research_result,
             summary_result=summary_result,
             cycle_result=cycle_result,
@@ -192,9 +196,10 @@ def run_research_governance_pipeline(
             output_dir=Path("reports"),
         )
     except Exception as exc:
+        partial_run_date = governance_run_date or date.today()
         _write_partial_pipeline_summary_artifact(
             research_end_date=end_date,
-            governance_run_date=run_date,
+            governance_run_date=partial_run_date,
             failed_step=current_step,
             error=exc,
         )
