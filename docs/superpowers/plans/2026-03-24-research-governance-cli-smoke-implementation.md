@@ -150,7 +150,7 @@ def test_research_governance_pipeline_cli_smoke_happy_path(tmp_path, monkeypatch
     assert exit_code == 0
     assert "research_report=" in stdout
     assert "summary_json=" in stdout
-    assert "decision_id=" in stdout
+    assert "decision_id=1 review_status=ready blocked_reasons=[]" in stdout
     assert "pipeline_summary=" in stdout
 ```
 
@@ -305,6 +305,14 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_zero_by_default(
     )
 
     assert exit_code == 0
+    assert Path("reports/research/2026-03-24.json").exists()
+    assert Path("reports/research/2026-03-24.md").exists()
+    assert Path("reports/research/2026-03-24.csv").exists()
+    assert Path("reports/research/summary/research_summary.json").exists()
+    assert Path("reports/governance/cycle/2026-03-24.json").exists()
+    assert Path("reports/governance/2026-03-24.json").exists()
+    assert Path("reports/governance/pipeline/2026-03-24.json").exists()
+    assert Path("reports/portal_summary.json").exists()
     payload = json.loads(Path("reports/governance/pipeline/2026-03-24.json").read_text(encoding="utf-8"))
     assert payload["final_decision"]["review_status"] == "blocked"
     assert payload["final_decision"]["blocked_reasons"] == ["SELECTED_STRATEGY_REGIME_MISMATCH"]
@@ -328,6 +336,7 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_two_with_fail_fl
     assert Path("reports/research/2026-03-24.json").exists()
     assert Path("reports/research/2026-03-24.md").exists()
     assert Path("reports/research/2026-03-24.csv").exists()
+    assert Path("reports/research/summary/research_summary.json").exists()
     assert Path("reports/governance/cycle/2026-03-24.json").exists()
     assert Path("reports/governance/2026-03-24.json").exists()
     assert Path("reports/governance/pipeline/2026-03-24.json").exists()
@@ -384,6 +393,7 @@ def _install_governance_cycle_stub(
 - 两个 smoke 都必须证明：
   - 复用 `_install_smoke_env(...)`，固定 run_date 与 `tmp_path`
   - research 三件套没有因为 `blocked` 被跳过
+  - `reports/research/summary/research_summary.json` 仍然存在
   - artifact 没有因为 `blocked` 被短路
   - `reports/portal_summary.json` 仍然存在
   - `pipeline summary.final_decision.blocked_reasons` 正确
