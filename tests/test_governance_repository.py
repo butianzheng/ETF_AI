@@ -30,12 +30,12 @@ def _build_incident() -> GovernanceIncident:
     )
 
 
-def test_strategy_config_loads_governance_automation_policy():
+def test_strategy_config_loads_governance_regime_gate_policy():
     strategy_config = ConfigLoader().load_strategy_config()
 
-    assert strategy_config.governance.automation.enabled is True
-    assert strategy_config.governance.automation.max_summary_age_days == 7
-    assert strategy_config.governance.automation.min_days_between_switches == 20
+    assert strategy_config.governance.automation.regime_gate.enabled is True
+    assert strategy_config.governance.automation.regime_gate.min_appearances == 2
+    assert strategy_config.governance.automation.regime_gate.min_avg_observation_count == 20
 
 
 def test_governance_decision_defaults_to_pending_review_status():
@@ -63,10 +63,12 @@ def test_governance_repository_tracks_publish_and_rollback():
         reviewed = repo.set_review_status(
             draft.id,
             review_status="blocked",
-            blocked_reasons=["SUMMARY_STALE"],
+            blocked_reasons=["SELECTED_STRATEGY_REGIME_MISMATCH"],
+            evidence={"regime_gate": {"gate_status": "blocked"}},
         )
         assert reviewed.review_status == "blocked"
-        assert reviewed.blocked_reasons == ["SUMMARY_STALE"]
+        assert reviewed.blocked_reasons == ["SELECTED_STRATEGY_REGIME_MISMATCH"]
+        assert reviewed.evidence["regime_gate"]["gate_status"] == "blocked"
 
         approved = repo.approve(draft.id, approved_by="tester")
         assert approved.status == "approved"

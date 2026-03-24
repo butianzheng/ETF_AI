@@ -45,6 +45,10 @@ strategy:
       min_days_between_switches: 20
       block_on_open_incident: true
       risk_breach_streak: 2
+      regime_gate:
+        enabled: true
+        min_appearances: 2
+        min_avg_observation_count: 20
 
   # 空仓配置
   allow_cash: true

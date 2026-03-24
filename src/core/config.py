@@ -35,6 +35,14 @@ class DefensiveModeConfig(BaseModel):
     defensive_etf: Optional[str] = None
 
 
+class GovernanceRegimeGateConfig(BaseModel):
+    """治理自动化的 Regime 门禁配置。"""
+
+    enabled: bool = True
+    min_appearances: int = 2
+    min_avg_observation_count: float = 20.0
+
+
 class GovernanceAutomationConfig(BaseModel):
     """治理自动化配置。"""
 
@@ -45,6 +53,7 @@ class GovernanceAutomationConfig(BaseModel):
     min_days_between_switches: int = 20
     block_on_open_incident: bool = True
     risk_breach_streak: int = 2
+    regime_gate: GovernanceRegimeGateConfig = Field(default_factory=GovernanceRegimeGateConfig)
 
 
 class GovernanceConfig(BaseModel):

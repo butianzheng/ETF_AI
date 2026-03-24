@@ -5,7 +5,7 @@
 from dataclasses import asdict
 from datetime import date
 import json
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
@@ -304,12 +304,15 @@ class GovernanceRepository(BaseRepository):
         decision_id: int,
         review_status: str,
         blocked_reasons: List[str],
+        evidence: dict[str, Any] | None = None,
     ) -> GovernanceDecision:
         record = self.session.get(GovernanceDecisionRecord, decision_id)
         if record is None:
             raise ValueError(f"governance decision not found: {decision_id}")
         record.review_status = review_status
         record.blocked_reasons_json = _to_json_compatible(blocked_reasons)
+        if evidence is not None:
+            record.evidence_json = _to_json_compatible(evidence)
         self.session.commit()
         self.session.refresh(record)
         return _to_governance_decision(record)
