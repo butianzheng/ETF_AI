@@ -54,6 +54,23 @@ class BacktestRun(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class GovernanceDecisionRecord(Base):
+    __tablename__ = "governance_decision"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    decision_date = Column(Date, index=True, nullable=False)
+    decision_type = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    current_strategy_id = Column(String, nullable=True)
+    selected_strategy_id = Column(String, nullable=False)
+    previous_strategy_id = Column(String, nullable=True)
+    fallback_strategy_id = Column(String, nullable=False)
+    approved_by = Column(String, nullable=True)
+    reason_codes_json = Column(JSON, nullable=True)
+    evidence_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class AgentLog(Base):
     __tablename__ = "agent_log"
 

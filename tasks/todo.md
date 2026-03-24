@@ -498,3 +498,29 @@
 - `pytest -q tests/test_report_portal.py tests/test_research_summary.py` 通过，当前 4 项测试全部成功
 - `python3 scripts/build_report_portal.py` 通过，真实统一门户已生成
 - `pytest -q tests` 通过，当前 15 项测试全部成功
+
+## 2026-03-24 第二阶段治理层落地
+
+### 计划
+- [x] 增加治理配置、领域模型与 SQLite 决策持久化
+- [x] 落地治理评估器与 `run_governance_review.py`
+- [x] 接入审批、发布、回退与生产运行时策略解析
+- [x] 升级统一门户与 README 治理运维说明
+- [x] 执行专项测试、全量测试与语法编译校验
+- [x] 按单次仓库提交收敛第二阶段改动
+
+### 本轮结果
+- 已新增 `src/governance/` 域，覆盖治理配置、评估、运行时解析、发布与回退
+- 已新增 `governance_decision` 表与 `GovernanceRepository`，支持 draft/approved/published/rolled_back 生命周期
+- 生产主流程已优先消费“最新已发布治理策略”，治理关闭或无有效发布记录时回退到 YAML 默认策略
+- 已新增 `scripts/run_governance_review.py`、`scripts/publish_governance_decision.py`、`scripts/rollback_governance_decision.py`
+- 统一门户已展示 active strategy、最近治理决策与最近已发布策略，README 已补充治理运维命令
+
+### 验证结果
+- `pytest -q tests/test_governance_models.py` 通过，`2 passed`
+- `pytest -q tests/test_governance_repository.py` 通过，`1 passed`
+- `pytest -q tests/test_governance_evaluator.py` 通过，`3 passed`
+- `pytest -q tests/test_governance_runtime.py tests/test_pipeline_e2e.py` 通过，`6 passed`
+- `pytest -q tests/test_report_portal.py` 通过，`2 passed`
+- `pytest -q` 通过，`62 passed in 1.63s`
+- `python3 -m compileall src scripts tests` 通过

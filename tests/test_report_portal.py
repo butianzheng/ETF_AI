@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
+from src.governance.models import GovernanceDecision
 from src.report_portal import build_report_portal, collect_daily_report_summaries
+from src.storage.repositories import GovernanceRepository
 
 
 def _write_daily_report(path: Path) -> None:
@@ -94,13 +96,32 @@ def test_build_report_portal(tmp_path):
     research_dir.mkdir()
     _write_daily_report(daily_dir / "2026-03-11.json")
     _write_research_report(research_dir / "2026-03-11.json")
+    repo = GovernanceRepository()
+    try:
+        draft = repo.save_draft(
+            GovernanceDecision(
+                decision_date=__import__("datetime").date(2026, 3, 24),
+                current_strategy_id="trend_momentum",
+                selected_strategy_id="risk_adjusted_momentum",
+                previous_strategy_id="trend_momentum",
+                fallback_strategy_id="trend_momentum",
+                decision_type="switch",
+            )
+        )
+        repo.approve(draft.id, approved_by="tester")
+        repo.publish(draft.id)
+    finally:
+        repo.close()
 
     result = build_report_portal(daily_dir=daily_dir, research_dir=research_dir, output_dir=output_dir)
 
     assert Path(result["output_paths"]["html"]).exists()
     assert Path(result["output_paths"]["json"]).exists()
+    assert result["governance_summary"]["latest_published"]["selected_strategy_id"] == "risk_adjusted_momentum"
     html = Path(result["output_paths"]["html"]).read_text(encoding="utf-8")
     assert "日报与研究统一门户" in html
     assert "研究历史总览" in html
     assert "2026-03-11" in html
     assert "trend_momentum" in html
+    assert "治理决策" in html
+    assert "published" in html

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from src.research_summary import aggregate_research_reports
+from src.storage.repositories import GovernanceRepository
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -68,14 +69,32 @@ def collect_daily_report_summaries(report_dir: str | Path = "reports/daily") -> 
     return rows
 
 
+def collect_governance_summary() -> Dict[str, Any]:
+    """收集最新治理状态。"""
+    repo = GovernanceRepository()
+    try:
+        latest_decision = repo.get_latest()
+        latest_published = repo.get_latest_published()
+    finally:
+        repo.close()
+
+    return {
+        "latest_decision": latest_decision.model_dump(mode="json") if latest_decision else None,
+        "latest_published": latest_published.model_dump(mode="json") if latest_published else None,
+    }
+
+
 def _build_portal_html(
     daily_rows: List[Dict[str, Any]],
     research_summary: Dict[str, Any],
+    governance_summary: Dict[str, Any],
     base_dir: Path,
 ) -> str:
     latest_daily = daily_rows[0] if daily_rows else None
     research_reports = research_summary.get("report_summaries", [])
     candidate_leaderboard = research_summary.get("candidate_leaderboard", [])
+    latest_governance = governance_summary.get("latest_decision")
+    latest_published = governance_summary.get("latest_published")
     latest_research = research_reports[-1] if research_reports else None
     leader = candidate_leaderboard[0] if candidate_leaderboard else None
     research_index_href = "research/summary/index.html" if research_reports else "#"
@@ -325,6 +344,20 @@ def _build_portal_html(
     </section>
 
     <section class="panel" style="margin-top:24px;">
+      <h2>治理决策</h2>
+      <div class="quick-links">
+        <div class="link-card">
+          <strong>最新治理状态</strong>
+          <span>{governance_status_note}</span>
+        </div>
+        <div class="link-card">
+          <strong>当前已发布策略</strong>
+          <span>{published_strategy_note}</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:24px;">
       <h2>日报时间线</h2>
       <div class="table-wrap">
         <table>
@@ -393,6 +426,16 @@ def _build_portal_html(
             if leader
             else "暂无候选统计"
         ),
+        governance_status_note=(
+            f"status={escape(latest_governance['status'])}，selected={escape(latest_governance['selected_strategy_id'])}"
+            if latest_governance
+            else "暂无治理决策"
+        ),
+        published_strategy_note=(
+            f"published={escape(latest_published['selected_strategy_id'])}"
+            if latest_published
+            else "暂无已发布策略"
+        ),
         daily_rows="\n".join(daily_rows_html) if daily_rows_html else '<tr><td colspan="8">暂无日报</td></tr>',
         research_rows="\n".join(research_rows_html) if research_rows_html else '<tr><td colspan="6">暂无研究报告</td></tr>',
         generated_at=datetime.now().isoformat(timespec="seconds"),
@@ -418,6 +461,7 @@ def build_report_portal(
             "candidate_observations": [],
             "output_paths": {},
         }
+    governance_summary = collect_governance_summary()
 
     portal_payload = {
         "daily_summaries": daily_rows,
@@ -428,17 +472,24 @@ def build_report_portal(
             "candidate_observations": research_result["candidate_observations"],
             "output_paths": research_result["output_paths"],
         },
+        "governance_summary": governance_summary,
     }
     json_path = output_dir / "portal_summary.json"
     html_path = output_dir / "index.html"
     json_path.write_text(json.dumps(portal_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     html_path.write_text(
-        _build_portal_html(daily_rows=daily_rows, research_summary=portal_payload["research_summary"], base_dir=output_dir),
+        _build_portal_html(
+            daily_rows=daily_rows,
+            research_summary=portal_payload["research_summary"],
+            governance_summary=portal_payload["governance_summary"],
+            base_dir=output_dir,
+        ),
         encoding="utf-8",
     )
     return {
         "daily_summaries": daily_rows,
         "research_summary": portal_payload["research_summary"],
+        "governance_summary": portal_payload["governance_summary"],
         "output_paths": {
             "html": str(html_path),
             "json": str(json_path),

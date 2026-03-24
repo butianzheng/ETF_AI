@@ -105,6 +105,19 @@ python scripts/build_report_portal.py
 - 运行 `scripts/daily_run.py` 后会自动刷新统一门户
 - 运行 `scripts/run_research.py` 或 `scripts/summarize_research_reports.py` 后也会自动刷新统一门户
 
+### 10. 治理评审、发布与回退
+
+```bash
+python scripts/run_governance_review.py --summary reports/research/summary/research_summary.json
+python scripts/publish_governance_decision.py --decision-id 1 --approved-by your_name
+python scripts/rollback_governance_decision.py --approved-by your_name --reason "manual rollback"
+```
+
+说明：
+- `run_governance_review.py` 会根据研究汇总结果生成治理 draft，并写入 `reports/governance/`
+- `publish_governance_decision.py` 会把指定 draft 审批并发布到生产运行时
+- `rollback_governance_decision.py` 会把生产策略回退到上一稳定策略或 fallback
+
 ## 项目结构
 
 ```

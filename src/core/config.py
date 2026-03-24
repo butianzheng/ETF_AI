@@ -35,6 +35,17 @@ class DefensiveModeConfig(BaseModel):
     defensive_etf: Optional[str] = None
 
 
+class GovernanceConfig(BaseModel):
+    """治理层配置。"""
+    enabled: bool = True
+    manual_approval_required: bool = True
+    champion_min_appearances: int = 3
+    challenger_min_top1: int = 2
+    challenger_min_score_margin: float = 0.05
+    champion_max_drawdown_penalty: float = 0.12
+    fallback_strategy_id: str = "trend_momentum"
+
+
 class StrategyConfig(BaseModel):
     """策略配置"""
     name: str
@@ -45,6 +56,7 @@ class StrategyConfig(BaseModel):
     score_formula: ScoreFormulaConfig
     trend_filter: TrendFilterConfig
     defensive_mode: DefensiveModeConfig
+    governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
     allow_cash: bool = True
 
     @model_validator(mode="before")

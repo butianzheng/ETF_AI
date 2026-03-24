@@ -9,9 +9,18 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from src.governance.models import GovernanceDecision
 from sqlalchemy.orm import Session
 from src.storage.database import SessionLocal
-from src.storage.models import AgentLog, BacktestRun, ExecutionRecord, MarketPrice, PortfolioState, StrategySignal
+from src.storage.models import (
+    AgentLog,
+    BacktestRun,
+    ExecutionRecord,
+    GovernanceDecisionRecord,
+    MarketPrice,
+    PortfolioState,
+    StrategySignal,
+)
 
 
 class BaseRepository:
@@ -198,6 +207,121 @@ class BacktestRepository(BaseRepository):
         if strategy_name:
             q = q.filter(BacktestRun.strategy_name == strategy_name)
         return q.order_by(BacktestRun.created_at.desc()).all()
+
+
+def _to_governance_decision(record: GovernanceDecisionRecord) -> GovernanceDecision:
+    return GovernanceDecision(
+        id=record.id,
+        decision_date=record.decision_date,
+        current_strategy_id=record.current_strategy_id,
+        selected_strategy_id=record.selected_strategy_id,
+        previous_strategy_id=record.previous_strategy_id,
+        fallback_strategy_id=record.fallback_strategy_id,
+        decision_type=record.decision_type,
+        status=record.status,
+        approved_by=record.approved_by,
+        reason_codes=record.reason_codes_json or [],
+        evidence=record.evidence_json or {},
+    )
+
+
+class GovernanceRepository(BaseRepository):
+    """治理决策仓储。"""
+
+    def get_by_id(self, decision_id: int) -> GovernanceDecision | None:
+        record = self.session.get(GovernanceDecisionRecord, decision_id)
+        if record is None:
+            return None
+        return _to_governance_decision(record)
+
+    def get_latest(self) -> GovernanceDecision | None:
+        record = (
+            self.session.query(GovernanceDecisionRecord)
+            .order_by(GovernanceDecisionRecord.id.desc())
+            .first()
+        )
+        if record is None:
+            return None
+        return _to_governance_decision(record)
+
+    def save_draft(self, decision: GovernanceDecision) -> GovernanceDecision:
+        record = GovernanceDecisionRecord(
+            decision_date=decision.decision_date,
+            decision_type=decision.decision_type,
+            status="draft",
+            current_strategy_id=decision.current_strategy_id,
+            selected_strategy_id=decision.selected_strategy_id,
+            previous_strategy_id=decision.previous_strategy_id,
+            fallback_strategy_id=decision.fallback_strategy_id,
+            approved_by=decision.approved_by,
+            reason_codes_json=_to_json_compatible(decision.reason_codes),
+            evidence_json=_to_json_compatible(decision.evidence),
+        )
+        self.session.add(record)
+        self.session.commit()
+        self.session.refresh(record)
+        return _to_governance_decision(record)
+
+    def approve(self, decision_id: int, approved_by: str) -> GovernanceDecision:
+        record = self.session.get(GovernanceDecisionRecord, decision_id)
+        if record is None:
+            raise ValueError(f"governance decision not found: {decision_id}")
+        record.status = "approved"
+        record.approved_by = approved_by
+        self.session.commit()
+        self.session.refresh(record)
+        return _to_governance_decision(record)
+
+    def publish(self, decision_id: int) -> GovernanceDecision:
+        record = self.session.get(GovernanceDecisionRecord, decision_id)
+        if record is None:
+            raise ValueError(f"governance decision not found: {decision_id}")
+        if record.status not in {"draft", "approved"}:
+            raise ValueError(f"cannot publish governance decision in status: {record.status}")
+        record.status = "published"
+        self.session.commit()
+        self.session.refresh(record)
+        return _to_governance_decision(record)
+
+    def get_latest_published(self) -> GovernanceDecision | None:
+        record = (
+            self.session.query(GovernanceDecisionRecord)
+            .filter(GovernanceDecisionRecord.status == "published")
+            .order_by(GovernanceDecisionRecord.id.desc())
+            .first()
+        )
+        if record is None:
+            return None
+        return _to_governance_decision(record)
+
+    def rollback_latest(self, approved_by: str, reason: str) -> GovernanceDecision:
+        latest = (
+            self.session.query(GovernanceDecisionRecord)
+            .filter(GovernanceDecisionRecord.status == "published")
+            .order_by(GovernanceDecisionRecord.id.desc())
+            .first()
+        )
+        if latest is None:
+            raise ValueError("no published governance decision to rollback")
+
+        latest.status = "rolled_back"
+        rollback_target = latest.previous_strategy_id or latest.fallback_strategy_id
+        rollback_record = GovernanceDecisionRecord(
+            decision_date=latest.decision_date,
+            decision_type="fallback",
+            status="published",
+            current_strategy_id=latest.selected_strategy_id,
+            selected_strategy_id=rollback_target,
+            previous_strategy_id=latest.selected_strategy_id,
+            fallback_strategy_id=latest.fallback_strategy_id,
+            approved_by=approved_by,
+            reason_codes_json=["MANUAL_ROLLBACK"],
+            evidence_json={"reason": reason},
+        )
+        self.session.add(rollback_record)
+        self.session.commit()
+        self.session.refresh(rollback_record)
+        return _to_governance_decision(rollback_record)
 
 
 class AgentLogRepository(BaseRepository):

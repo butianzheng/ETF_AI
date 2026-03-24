@@ -15,14 +15,15 @@ from src.data.fetcher import DataFetcher
 from src.data.normalizer import DataNormalizer
 from src.data.validator import ValidationResult, DataValidator
 from src.execution import OrderChecker, OrderRequest, RebalanceExecutor
+from src.governance.runtime import resolve_active_strategy_id
 from src.report_portal import build_report_portal
 from src.storage.database import init_db
-from src.storage.repositories import PortfolioRepository, PriceRepository, SignalRepository
+from src.storage.repositories import GovernanceRepository, PortfolioRepository, PriceRepository, SignalRepository
 from src.strategy.candidates.base import BaseCandidateStrategy
-from src.strategy.candidates.trend_momentum import TrendMomentumStrategy
 from src.strategy.engine import StrategyResult
 from src.strategy.features import build_feature_snapshot
 from src.strategy.momentum import MomentumCalculator
+from src.strategy.registry import build_candidate_strategy as build_registered_candidate_strategy
 from src.strategy.selector import ETFScore, PositionSelector
 from src.strategy.trend_filter import TrendFilter
 
@@ -176,17 +177,8 @@ def _to_jsonable(value: Any) -> Any:
 
 
 def build_candidate_strategy(strategy_id: str, strategy_config: Any) -> BaseCandidateStrategy:
-    """Task 5 临时本地 builder，仅支持 trend_momentum。"""
-    if strategy_id != "trend_momentum":
-        raise ValueError(f"unsupported production strategy id: {strategy_id}")
-    return TrendMomentumStrategy(
-        return_20_weight=strategy_config.score_formula.return_20_weight,
-        return_60_weight=strategy_config.score_formula.return_60_weight,
-        allow_cash=strategy_config.allow_cash,
-        trend_filter_enabled=strategy_config.trend_filter.enabled,
-        trend_filter_ma_period=strategy_config.trend_filter.ma_period,
-        trend_filter_ma_type=strategy_config.trend_filter.ma_type,
-    )
+    """按注册表构造生产候选策略。"""
+    return build_registered_candidate_strategy(strategy_id, strategy_config)
 
 
 def _build_compatible_scores(
@@ -301,7 +293,16 @@ def run_daily_pipeline(
 
     trade_date = as_of_date or date.today()
     strategy_config = config_loader.load_strategy_config()
-    active_strategy_id = config_loader.load_production_strategy_id()
+    governance_enabled = getattr(getattr(strategy_config, "governance", None), "enabled", False)
+    governance_repo = GovernanceRepository()
+    try:
+        active_strategy_id = resolve_active_strategy_id(
+            default_strategy_id=config_loader.load_production_strategy_id(),
+            repo=governance_repo,
+            governance_enabled=governance_enabled,
+        )
+    finally:
+        governance_repo.close()
     active_strategy = build_candidate_strategy(active_strategy_id, strategy_config)
     etf_pool = config_loader.load_etf_pool()
     etf_names = {item.code: item.name for item in etf_pool if item.enabled}
@@ -457,7 +458,11 @@ def run_daily_pipeline(
             data_status=data_qa_output.status,
             execution_status=execution_status,
             execution_reason=execution_reason,
-            data={"active_strategy_id": proposal.strategy_id, "reason_codes": proposal.reason_codes},
+            data={
+                "active_strategy_id": proposal.strategy_id,
+                "reason_codes": proposal.reason_codes,
+                "governance_enabled": governance_enabled,
+            },
         )
     )
 

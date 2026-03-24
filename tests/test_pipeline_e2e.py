@@ -5,7 +5,9 @@ import pandas as pd
 import pytest
 
 import src.main as main_module
+from src.governance.models import GovernanceDecision
 from src.main import run_daily_pipeline
+from src.storage.repositories import GovernanceRepository
 
 
 def _build_price_df(symbol: str, start_date: date, days: int, base: float, slope: float) -> pd.DataFrame:
@@ -93,3 +95,43 @@ def test_daily_pipeline_fails_fast_when_production_trend_filter_config_is_unsupp
 
     with pytest.raises(ValueError, match="only supports"):
         run_daily_pipeline(as_of_date=date(2026, 3, 11), refresh_data=False)
+
+
+def test_daily_pipeline_uses_latest_published_governance_strategy():
+    repo = GovernanceRepository()
+    try:
+        draft = repo.save_draft(
+            GovernanceDecision(
+                decision_date=date(2026, 3, 24),
+                current_strategy_id="trend_momentum",
+                selected_strategy_id="risk_adjusted_momentum",
+                previous_strategy_id="trend_momentum",
+                fallback_strategy_id="trend_momentum",
+                decision_type="switch",
+            )
+        )
+        repo.approve(draft.id, approved_by="tester")
+        repo.publish(draft.id)
+    finally:
+        repo.close()
+
+    start = date(2025, 3, 1)
+    price_data = {
+        "510300": _build_price_df("510300", start, 420, 4.0, 0.001),
+        "510500": _build_price_df("510500", start, 420, 3.5, 0.006),
+        "159915": _build_price_df("159915", start, 420, 3.0, 0.002),
+        "515180": _build_price_df("515180", start, 420, 2.8, 0.0015),
+    }
+
+    result = run_daily_pipeline(
+        as_of_date=date(2026, 3, 11),
+        log_level="INFO",
+        execute_trade=False,
+        manual_approved=True,
+        available_cash=100000.0,
+        refresh_data=False,
+        price_data_override=price_data,
+    )
+
+    assert result["status"] == "ok"
+    assert result["report_output"].data.get("active_strategy_id") == "risk_adjusted_momentum"

@@ -14,6 +14,7 @@
 > 1. 本计划以上一轮设计 spec `docs/superpowers/specs/2026-03-23-single-etf-governed-strategy-design.md` 第 7 节与第 10 节为输入。
 > 2. 本轮不新增更多候选策略，先只治理现有 `trend_momentum` / `risk_adjusted_momentum`。
 > 3. 发布切换默认要求人工审批，不在本轮引入自动发布。
+> 4. 仓库提交按用户要求收敛为单次 commit，不按 task 分拆提交。
 
 ## File Structure
 
@@ -77,7 +78,7 @@
 - Modify: `config/strategy.yaml`
 - Test: `tests/test_governance_models.py`
 
-- [ ] **Step 1: 写失败测试，锁定治理配置能从 strategy.yaml 正确加载**
+- [x] **Step 1: 写失败测试，锁定治理配置能从 strategy.yaml 正确加载**
 
 ```python
 def test_strategy_config_loads_governance_policy():
@@ -87,12 +88,12 @@ def test_strategy_config_loads_governance_policy():
     assert strategy_config.governance.fallback_strategy_id == "trend_momentum"
 ```
 
-- [ ] **Step 2: 运行测试确认当前尚无治理配置模型**
+- [x] **Step 2: 运行测试确认当前尚无治理配置模型**
 
 Run: `pytest -q tests/test_governance_models.py`
 Expected: FAIL，`StrategyConfig` 缺少 `governance` 字段
 
-- [ ] **Step 3: 实现最小治理配置与领域对象**
+- [x] **Step 3: 实现最小治理配置与领域对象**
 
 ```python
 class GovernanceConfig(BaseModel):
@@ -122,7 +123,7 @@ class GovernanceDecision(BaseModel):
 - 默认 fallback 先指向 `trend_momentum`，不在本轮新建防御策略
 - 领域对象与 ORM 解耦，先走 pydantic + repository 映射
 
-- [ ] **Step 4: 在 `config/strategy.yaml` 增加治理配置段**
+- [x] **Step 4: 在 `config/strategy.yaml` 增加治理配置段**
 
 ```yaml
 governance:
@@ -135,12 +136,12 @@ governance:
   fallback_strategy_id: trend_momentum
 ```
 
-- [ ] **Step 5: 运行模型测试确认通过**
+- [x] **Step 5: 运行模型测试确认通过**
 
 Run: `pytest -q tests/test_governance_models.py`
 Expected: PASS
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交（本轮合并为单次仓库提交）**
 
 ```bash
 git add src/governance/__init__.py src/governance/models.py tests/test_governance_models.py src/core/config.py config/strategy.yaml
@@ -155,7 +156,7 @@ git commit -m "feat: add governance domain models and config"
 - Modify: `src/storage/repositories.py`
 - Test: `tests/test_governance_repository.py`
 
-- [ ] **Step 1: 写失败测试，锁定 draft/approved/published/rolled_back 生命周期**
+- [x] **Step 1: 写失败测试，锁定 draft/approved/published/rolled_back 生命周期**
 
 ```python
 def test_governance_repository_tracks_publish_and_rollback():
@@ -166,12 +167,12 @@ def test_governance_repository_tracks_publish_and_rollback():
     assert repo.get_latest_published().selected_strategy_id == "risk_adjusted_momentum"
 ```
 
-- [ ] **Step 2: 运行测试确认当前没有治理仓储**
+- [x] **Step 2: 运行测试确认当前没有治理仓储**
 
 Run: `pytest -q tests/test_governance_repository.py`
 Expected: FAIL with `ImportError` or missing repository/table
 
-- [ ] **Step 3: 在 ORM 中新增治理决策表**
+- [x] **Step 3: 在 ORM 中新增治理决策表**
 
 ```python
 class GovernanceDecisionRecord(Base):
@@ -189,7 +190,7 @@ class GovernanceDecisionRecord(Base):
     evidence_json = Column(JSON, nullable=True)
 ```
 
-- [ ] **Step 4: 在 `src/storage/repositories.py` 增加 `GovernanceRepository`**
+- [x] **Step 4: 在 `src/storage/repositories.py` 增加 `GovernanceRepository`**
 
 ```python
 class GovernanceRepository(BaseRepository):
@@ -205,12 +206,12 @@ class GovernanceRepository(BaseRepository):
 - 回退不删除历史记录，只新增一条 `rolled_back` / `published` 事件
 - repository 返回领域对象，不把 ORM 暴露给上层
 
-- [ ] **Step 5: 运行仓储测试确认通过**
+- [x] **Step 5: 运行仓储测试确认通过**
 
 Run: `pytest -q tests/test_governance_repository.py`
 Expected: PASS
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交（本轮合并为单次仓库提交）**
 
 ```bash
 git add tests/test_governance_repository.py src/storage/models.py src/storage/repositories.py
@@ -223,10 +224,10 @@ git commit -m "feat: persist governance decisions and publish state"
 - Create: `src/governance/evaluator.py`
 - Create: `scripts/run_governance_review.py`
 - Create: `tests/test_governance_evaluator.py`
-- Modify: `src/research_summary.py`
+- Reuse: `reports/research/summary/research_summary.json` 既有输出契约（本轮无需改动 `src/research_summary.py`）
 - Test: `tests/test_governance_evaluator.py`
 
-- [ ] **Step 1: 写失败测试，锁定 keep/switch/fallback 三种决策**
+- [x] **Step 1: 写失败测试，锁定 keep/switch/fallback 三种决策**
 
 ```python
 def test_evaluator_switches_when_challenger_wins_consistently():
@@ -235,12 +236,12 @@ def test_evaluator_switches_when_challenger_wins_consistently():
     assert decision.selected_strategy_id == "risk_adjusted_momentum"
 ```
 
-- [ ] **Step 2: 运行测试确认当前缺少治理评估器**
+- [x] **Step 2: 运行测试确认当前缺少治理评估器**
 
 Run: `pytest -q tests/test_governance_evaluator.py`
 Expected: FAIL
 
-- [ ] **Step 3: 实现治理评分与决策规则**
+- [x] **Step 3: 实现治理评分与决策规则**
 
 ```python
 def evaluate_governance(summary: dict[str, Any], current_strategy_id: str | None, policy: GovernanceConfig) -> GovernanceDecision:
@@ -261,7 +262,7 @@ governance_score = (
 )
 ```
 
-- [ ] **Step 4: 新增治理 review 脚本**
+- [x] **Step 4: 新增治理 review 脚本**
 
 ```bash
 python scripts/run_governance_review.py --summary reports/research/summary/research_summary.json
@@ -272,12 +273,12 @@ python scripts/run_governance_review.py --summary reports/research/summary/resea
 - 输出 `reports/governance/<date>.json`
 - 同时把 draft decision 写入 `governance_decision` 表
 
-- [ ] **Step 5: 运行治理评估测试**
+- [x] **Step 5: 运行治理评估测试**
 
 Run: `pytest -q tests/test_governance_evaluator.py`
 Expected: PASS
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交（本轮合并为单次仓库提交）**
 
 ```bash
 git add src/governance/evaluator.py scripts/run_governance_review.py tests/test_governance_evaluator.py src/research_summary.py
@@ -297,7 +298,7 @@ git commit -m "feat: add governance evaluator and review draft flow"
 - Test: `tests/test_governance_runtime.py`
 - Test: `tests/test_pipeline_e2e.py`
 
-- [ ] **Step 1: 写失败测试，锁定生产优先读取最新已发布治理策略**
+- [x] **Step 1: 写失败测试，锁定生产优先读取最新已发布治理策略**
 
 ```python
 def test_runtime_prefers_latest_published_governance_strategy():
@@ -305,12 +306,12 @@ def test_runtime_prefers_latest_published_governance_strategy():
     assert strategy_id == "risk_adjusted_momentum"
 ```
 
-- [ ] **Step 2: 运行测试确认当前生产仍固定读取 YAML 默认值**
+- [x] **Step 2: 运行测试确认当前生产仍固定读取 YAML 默认值**
 
 Run: `pytest -q tests/test_governance_runtime.py tests/test_pipeline_e2e.py`
 Expected: FAIL，当前 `main.py` 只看 `production_strategy_id`
 
-- [ ] **Step 3: 实现审批/发布/回退服务**
+- [x] **Step 3: 实现审批/发布/回退服务**
 
 ```python
 def publish_decision(decision_id: int, approved_by: str, repo: GovernanceRepository) -> GovernanceDecision: ...
@@ -322,7 +323,7 @@ def rollback_latest(approved_by: str, reason: str, repo: GovernanceRepository, f
 - 发布时只能发布 `draft` / `approved` 的最新候选，不允许任意覆盖
 - 回退优先回到 `previous_strategy_id`，不存在则回到 `fallback_strategy_id`
 
-- [ ] **Step 4: 修改 `src/main.py` 的 active strategy 解析逻辑**
+- [x] **Step 4: 修改 `src/main.py` 的 active strategy 解析逻辑**
 
 ```python
 active_strategy_id = resolve_active_strategy_id(
@@ -335,12 +336,12 @@ active_strategy_id = resolve_active_strategy_id(
 - 若治理层关闭、表为空、最新发布策略不受支持，则安全回退到 YAML 默认策略
 - 运行日报时把治理来源写入 `report_output.data`
 
-- [ ] **Step 5: 运行生产链路相关测试**
+- [x] **Step 5: 运行生产链路相关测试**
 
 Run: `pytest -q tests/test_governance_runtime.py tests/test_pipeline_e2e.py`
 Expected: PASS
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交（本轮合并为单次仓库提交）**
 
 ```bash
 git add src/governance/runtime.py src/governance/publisher.py scripts/publish_governance_decision.py scripts/rollback_governance_decision.py tests/test_governance_runtime.py src/main.py tests/test_pipeline_e2e.py
@@ -356,7 +357,7 @@ git commit -m "feat: publish governance decisions into production runtime"
 - Modify: `tests/test_report_portal.py`
 - Test: `tests/test_report_portal.py`
 
-- [ ] **Step 1: 写失败测试，锁定门户展示治理状态**
+- [x] **Step 1: 写失败测试，锁定门户展示治理状态**
 
 ```python
 def test_report_portal_shows_active_governance_strategy(tmp_path):
@@ -366,12 +367,12 @@ def test_report_portal_shows_active_governance_strategy(tmp_path):
     assert "治理决策" in html
 ```
 
-- [ ] **Step 2: 运行测试确认当前门户还不展示治理状态**
+- [x] **Step 2: 运行测试确认当前门户还不展示治理状态**
 
 Run: `pytest -q tests/test_report_portal.py`
 Expected: FAIL
 
-- [ ] **Step 3: 更新门户与 README**
+- [x] **Step 3: 更新门户与 README**
 
 要求：
 - 门户显示：
@@ -384,7 +385,7 @@ Expected: FAIL
   - `python scripts/rollback_governance_decision.py --approved-by <name> --reason <text>`
 - `tasks/todo.md` 记录第二阶段治理层计划与结果
 
-- [ ] **Step 4: 运行治理展示与全量验证**
+- [x] **Step 4: 运行治理展示与全量验证**
 
 Run: `pytest -q tests/test_report_portal.py`
 Expected: PASS
@@ -395,7 +396,7 @@ Expected: PASS
 Run: `python3 -m compileall src scripts tests`
 Expected: PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交（本轮合并为单次仓库提交）**
 
 ```bash
 git add src/report_portal.py README.md tasks/todo.md tests/test_report_portal.py
@@ -404,14 +405,14 @@ git commit -m "docs: surface governance lifecycle in portal and runbook"
 
 ## Final Verification Checklist
 
-- [ ] `tests/test_governance_models.py` 通过
-- [ ] `tests/test_governance_repository.py` 通过
-- [ ] `tests/test_governance_evaluator.py` 通过
-- [ ] `tests/test_governance_runtime.py` 通过
-- [ ] `tests/test_pipeline_e2e.py` 通过
-- [ ] `tests/test_report_portal.py` 通过
-- [ ] `pytest -q` 全量通过
-- [ ] `python3 -m compileall src scripts tests` 通过
-- [ ] 未发布 draft 不会影响生产 active strategy
-- [ ] 已发布策略可被 `src/main.py` 自动消费
-- [ ] rollback 后生产侧可恢复到上一个稳定策略或 fallback
+- [x] `tests/test_governance_models.py` 通过
+- [x] `tests/test_governance_repository.py` 通过
+- [x] `tests/test_governance_evaluator.py` 通过
+- [x] `tests/test_governance_runtime.py` 通过
+- [x] `tests/test_pipeline_e2e.py` 通过
+- [x] `tests/test_report_portal.py` 通过
+- [x] `pytest -q` 全量通过
+- [x] `python3 -m compileall src scripts tests` 通过
+- [x] 未发布 draft 不会影响生产 active strategy
+- [x] 已发布策略可被 `src/main.py` 自动消费
+- [x] rollback 后生产侧可恢复到上一个稳定策略或 fallback
