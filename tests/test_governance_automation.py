@@ -217,8 +217,10 @@ def test_run_governance_cycle_does_not_reuse_draft_when_current_strategy_changes
             current_regime_snapshot=_build_snapshot("risk_on"),
         )
 
+        assert first.summary_hash == second.summary_hash
         assert first.decision.id != second.decision.id
         assert second.decision.current_strategy_id == "risk_adjusted_momentum"
+        assert second.decision.selected_strategy_id == "risk_adjusted_momentum"
         assert second.decision.decision_type == "keep"
     finally:
         repo.close()
