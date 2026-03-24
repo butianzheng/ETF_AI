@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -59,6 +60,27 @@ def test_research_pipeline_generates_outputs():
     assert Path(result["report_paths"]["markdown"]).exists()
     assert Path(result["report_paths"]["json"]).exists()
     assert Path(result["report_paths"]["csv"]).exists()
+
+
+def test_research_pipeline_outputs_regime_analysis_sections():
+    _seed_research_db()
+    result = run_research_pipeline(
+        start_date=date(2025, 12, 1),
+        end_date=date(2026, 3, 11),
+        log_level="INFO",
+    )
+
+    assert result["regime_daily_labels"]
+    assert result["candidate_regime_metrics"]["baseline_trend"]["by_regime_metrics"]["risk_on"]["observation_count"] >= 0
+    assert result["candidate_sample_split_metrics"]["baseline_trend"]["out_of_sample_metrics"]["observation_count"] > 0
+    assert isinstance(result["candidate_regime_transition_metrics"]["baseline_trend"], list)
+
+    payload = json.loads(Path(result["report_paths"]["json"]).read_text(encoding="utf-8"))
+    assert "regime_config_snapshot" in payload
+    assert "regime_daily_labels" in payload
+    assert "candidate_regime_metrics" in payload
+    assert "candidate_sample_split_metrics" in payload
+    assert "candidate_regime_transition_metrics" in payload
 
 
 def test_default_research_config_loaded():
