@@ -135,3 +135,82 @@ def test_daily_pipeline_uses_latest_published_governance_strategy():
 
     assert result["status"] == "ok"
     assert result["report_output"].data.get("active_strategy_id") == "risk_adjusted_momentum"
+
+
+def test_health_check_rollback_recommendation_can_restore_fallback_strategy(tmp_path):
+    from src.governance.health import check_governance_health
+
+    daily_dir = tmp_path / "daily"
+    daily_dir.mkdir()
+    report_path = daily_dir / f"{date.today().isoformat()}.json"
+    report_path.write_text(
+        __import__("json").dumps(
+            {
+                "status": "ok",
+                "strategy_result": {
+                    "current_position": None,
+                    "target_position": "510500",
+                    "rebalance": False,
+                },
+                "risk_output": {"risk_level": "red"},
+                "execution_result": {"status": "filled", "action": "BUY"},
+                "report_output": {
+                    "summary": "health rollback",
+                    "data": {"active_strategy_id": "trend_momentum"},
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    repo = GovernanceRepository()
+    try:
+        draft = repo.save_draft(
+            GovernanceDecision(
+                decision_date=date.today(),
+                current_strategy_id="trend_momentum",
+                selected_strategy_id="risk_adjusted_momentum",
+                previous_strategy_id="trend_momentum",
+                fallback_strategy_id="trend_momentum",
+                decision_type="switch",
+                review_status="ready",
+            )
+        )
+        repo.approve(draft.id, approved_by="tester")
+        repo.publish(draft.id)
+
+        recommendation = check_governance_health(
+            report_dir=daily_dir,
+            repo=repo,
+            policy=main_module.config_loader.load_strategy_config().governance,
+            create_rollback_draft=True,
+        ).rollback_recommendation
+        assert recommendation is not None
+
+        repo.approve(recommendation.id, approved_by="ops")
+        repo.publish(recommendation.id)
+    finally:
+        repo.close()
+
+    start = date(2025, 3, 1)
+    price_data = {
+        "510300": _build_price_df("510300", start, 420, 4.0, 0.001),
+        "510500": _build_price_df("510500", start, 420, 3.5, 0.006),
+        "159915": _build_price_df("159915", start, 420, 3.0, 0.002),
+        "515180": _build_price_df("515180", start, 420, 2.8, 0.0015),
+    }
+
+    result = run_daily_pipeline(
+        as_of_date=date(2026, 3, 11),
+        log_level="INFO",
+        execute_trade=False,
+        manual_approved=True,
+        available_cash=100000.0,
+        refresh_data=False,
+        price_data_override=price_data,
+    )
+
+    assert result["status"] == "ok"
+    assert result["report_output"].data.get("active_strategy_id") == "trend_momentum"
