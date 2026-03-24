@@ -11,7 +11,7 @@
 - `scripts/run_governance_cycle.py`
   - 基于研究摘要生成/刷新治理 draft，并写出 cycle 产物
 - `scripts/run_governance_review.py`
-  - 基于同一治理结果写出 review 产物
+  - 再次执行治理 cycle，并写出 review 产物
 
 当前缺口不在单点能力，而在运维入口：
 
@@ -31,6 +31,9 @@
   - `governance cycle`
   - `governance review artifact`
 - 新入口既要跑完整链路，也要输出统一摘要
+- 本阶段面向“当前执行日”的统一运维入口
+  - research 仍可传历史 `start_date/end_date`
+  - 但 governance freshness / regime / 产物命名继续沿用当前执行日语义
 - 若治理结果为 `blocked`：
   - 行为做成参数可配
   - 默认退出码仍为 `0`
@@ -103,6 +106,10 @@
 - `governance cycle` 只执行一次
 - 不重复跑第二次治理评估
 - review artifact 直接复用本次 cycle 已得到的 `decision`
+- summary 步骤继续按当前 `aggregate_research_reports()` 语义工作
+  - 先写入本次 research 报告
+  - 再聚合 `reports/research/*.json` 的全历史集合
+  - governance 输入仍是“全历史摘要”，不是“仅本次运行的临时摘要”
 
 ## 7. 模块边界
 
@@ -164,8 +171,6 @@
   - `--candidate-config`
 - 编排参数
   - `--current-strategy-id`
-  - `--report-dir`
-  - `--summary-output-dir`
 - 退出语义
   - `--fail-on-blocked`
 
@@ -177,6 +182,12 @@
   - `reports/research/summary`
   - `reports/governance`
   - `reports/governance/cycle`
+
+补充约束：
+
+- 本阶段不把 research / summary / governance 输出目录参数化
+- research、summary、governance 继续沿用现有默认目录
+- 避免本轮把范围扩成“所有产物目录完全可配”
 
 ## 9. 输出产物设计
 
@@ -190,6 +201,14 @@
 - `reports/research/summary/*`
 - `reports/governance/cycle/<date>.json`
 - `reports/governance/<date>.json`
+- `reports/index.html`
+- `reports/portal_summary.json`
+
+兼容性要求：
+
+- cycle artifact 的结构应与现有 `scripts/run_governance_cycle.py` 写出的 JSON 保持兼容
+- review artifact 的结构应与现有 `scripts/run_governance_review.py` 写出的 JSON 保持兼容
+- 成功跑完整链路后，portal 产物仍应刷新到最新状态
 
 ### 9.2 新增 pipeline summary
 
@@ -202,13 +221,23 @@
 - 记录整条编排链路的结构化摘要
 - 为自动化与后续运维入口提供稳定消费面
 
+日期口径要求：
+
+- research 产物继续沿用 `end_date` 命名
+- governance cycle / review / pipeline summary 继续沿用 orchestration 执行日命名
+  - 即与当前 governance 脚本保持一致
+- pipeline summary 必须同时写出：
+  - `research_end_date`
+  - `governance_run_date`
+
 ## 10. Pipeline Summary 结构
 
 建议统一写成：
 
 ```json
 {
-  "trade_date": "2026-03-24",
+  "research_end_date": "2026-03-24",
+  "governance_run_date": "2026-03-24",
   "steps": {
     "research": {
       "status": "completed",
@@ -275,7 +304,7 @@ pipeline_summary=reports/governance/pipeline/2026-03-24.json
 可选语义：
 
 - 开启 `--fail-on-blocked`
-- 若最终 `review_status == blocked`，则 CLI 返回非 `0`
+- 若最终 `review_status == blocked`，则 CLI 返回 `2`
 
 这样可以同时满足：
 
@@ -288,14 +317,22 @@ pipeline_summary=reports/governance/pipeline/2026-03-24.json
 
 - 直接终止后续步骤
 - 不写伪造 summary / governance 结果
+- 仍写 partial `pipeline summary`
+  - 标明 failed step
+  - 标明错误类型与错误信息
+- CLI 返回 `1`
 
 ### 13.2 summary 失败
 
 - 直接终止治理步骤
+- 仍写 partial `pipeline summary`
+- CLI 返回 `1`
 
 ### 13.3 governance cycle 失败
 
 - 直接终止 review artifact 写出
+- 仍写 partial `pipeline summary`
+- CLI 返回 `1`
 
 ### 13.4 governance blocked
 
@@ -309,6 +346,8 @@ pipeline_summary=reports/governance/pipeline/2026-03-24.json
 
 - 视为流程失败
 - 不得吞错
+- 仍写 partial `pipeline summary`
+- CLI 返回 `1`
 
 ## 14. 文件边界
 
@@ -350,7 +389,10 @@ pipeline_summary=reports/governance/pipeline/2026-03-24.json
   - 默认退出语义仍成功
   - `pipeline summary` 正确记录 `blocked_reasons`
 - fail-on-blocked path
-  - 当治理结果为 `blocked` 时，CLI 返回非 `0`
+  - 当治理结果为 `blocked` 时，CLI 返回 `2`
+- fatal error path
+  - research / summary / governance / review 任一步抛错时，CLI 返回 `1`
+  - partial `pipeline summary` 正确记录 failed step 与错误信息
 
 建议同时验证：
 
