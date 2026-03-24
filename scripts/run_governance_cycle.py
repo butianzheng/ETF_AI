@@ -1,4 +1,4 @@
-"""执行治理评审，生成 draft 决策。"""
+"""执行治理自动 review cycle。"""
 from __future__ import annotations
 
 import argparse
@@ -17,7 +17,7 @@ from src.storage.repositories import GovernanceRepository
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="根据研究汇总结果生成治理 draft 决策")
+    parser = argparse.ArgumentParser(description="读取研究汇总并执行治理自动 review cycle")
     parser.add_argument(
         "--summary",
         default="reports/research/summary/research_summary.json",
@@ -38,21 +38,37 @@ def main() -> None:
 
     repo = GovernanceRepository()
     try:
-        saved = run_governance_cycle(
+        result = run_governance_cycle(
             summary_path=summary_path,
             repo=repo,
             policy=strategy_config.governance,
             current_strategy_id=current_strategy_id,
-        ).decision
+        )
     finally:
         repo.close()
 
-    report_dir = Path("reports/governance")
+    report_dir = Path("reports/governance/cycle")
     report_dir.mkdir(parents=True, exist_ok=True)
     output_path = report_dir / f"{date.today().isoformat()}.json"
     output_path.write_text(
-        json.dumps(saved.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        json.dumps(
+            {
+                "decision": result.decision.model_dump(mode="json"),
+                "summary_hash": result.summary_hash,
+                "created_new": result.created_new,
+                "blocked_reasons": result.decision.blocked_reasons,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
+    )
+    print(
+        "decision_id={decision_id} review_status={review_status} blocked_reasons={blocked_reasons}".format(
+            decision_id=result.decision.id,
+            review_status=result.decision.review_status,
+            blocked_reasons=",".join(result.decision.blocked_reasons) or "[]",
+        )
     )
     print(output_path)
 

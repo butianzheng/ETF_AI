@@ -21,6 +21,10 @@ def publish_decision(
 
     if not policy.manual_approval_required and decision.status == "draft":
         repo.approve(decision_id, approved_by=approved_by)
+        decision = repo.get_by_id(decision_id)
+
+    if policy.automation.enabled and decision.review_status != "ready":
+        raise ValueError("governance decision review_status must be ready before publishing")
 
     return repo.publish(decision_id)
 

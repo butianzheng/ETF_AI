@@ -2,6 +2,7 @@ from datetime import date
 
 import pytest
 
+from src.core.config import GovernanceAutomationConfig
 from src.core.config import GovernanceConfig
 from src.governance.models import GovernanceDecision
 
@@ -72,5 +73,51 @@ def test_publish_decision_rejects_unapproved_draft_when_manual_approval_is_requi
                 repo=repo,
                 policy=GovernanceConfig(manual_approval_required=True),
             )
+    finally:
+        repo.close()
+
+
+def test_publish_decision_rejects_blocked_draft_when_automation_is_enabled():
+    from src.governance.publisher import publish_decision
+    from src.storage.repositories import GovernanceRepository
+
+    repo = GovernanceRepository()
+    try:
+        draft = repo.save_draft(_build_draft())
+        repo.set_review_status(draft.id, review_status="blocked", blocked_reasons=["SUMMARY_STALE"])
+        repo.approve(draft.id, approved_by="ops")
+
+        with pytest.raises(ValueError, match="review_status"):
+            publish_decision(
+                decision_id=draft.id,
+                approved_by="ops",
+                repo=repo,
+                policy=GovernanceConfig(manual_approval_required=True),
+            )
+    finally:
+        repo.close()
+
+
+def test_publish_decision_allows_blocked_draft_when_automation_is_disabled():
+    from src.governance.publisher import publish_decision
+    from src.storage.repositories import GovernanceRepository
+
+    repo = GovernanceRepository()
+    try:
+        draft = repo.save_draft(_build_draft())
+        repo.set_review_status(draft.id, review_status="blocked", blocked_reasons=["SUMMARY_STALE"])
+        repo.approve(draft.id, approved_by="ops")
+
+        published = publish_decision(
+            decision_id=draft.id,
+            approved_by="ops",
+            repo=repo,
+            policy=GovernanceConfig(
+                manual_approval_required=True,
+                automation=GovernanceAutomationConfig(enabled=False),
+            ),
+        )
+
+        assert published.status == "published"
     finally:
         repo.close()
