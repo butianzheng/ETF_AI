@@ -3,20 +3,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-
-def _write_candidate_config(path: Path) -> Path:
-    path.write_text(
-        """
-research:
-  candidates:
-    - name: baseline_trend
-      strategy_id: trend_momentum
-      description: baseline
-      overrides: {}
-""".strip(),
-        encoding="utf-8",
-    )
-    return path
+from tests.support.research_candidates import assert_candidate_specs, write_candidate_config
 
 
 def _write_minimal_research_report(base_dir: Path, report_date: str = "2026-03-24") -> dict[str, str]:
@@ -73,14 +60,7 @@ def _write_minimal_research_report(base_dir: Path, report_date: str = "2026-03-2
 
 def _install_research_pipeline_stub(monkeypatch, pipeline_module, tmp_path: Path) -> None:
     def fake_run_research_pipeline(**kwargs):
-        assert kwargs["candidate_specs"] == [
-            {
-                "name": "baseline_trend",
-                "strategy_id": "trend_momentum",
-                "description": "baseline",
-                "overrides": {},
-            }
-        ]
+        assert_candidate_specs(kwargs["candidate_specs"])
         report_paths = _write_minimal_research_report(tmp_path, report_date="2026-03-24")
         return {"report_paths": report_paths, "portal_paths": {}}
 
@@ -179,17 +159,10 @@ def test_research_governance_pipeline_cli_smoke_happy_path(tmp_path, monkeypatch
     class DummyStrategyConfig:
         governance = DummyGovernanceConfig()
 
-    candidate_config = _write_candidate_config(tmp_path / "research_candidates.yaml")
+    candidate_config = write_candidate_config(tmp_path / "research_candidates.yaml")
 
     def fake_run_research_pipeline(**kwargs):
-        assert kwargs["candidate_specs"] == [
-            {
-                "name": "baseline_trend",
-                "strategy_id": "trend_momentum",
-                "description": "baseline",
-                "overrides": {},
-            }
-        ]
+        assert_candidate_specs(kwargs["candidate_specs"])
         report_paths = _write_minimal_research_report(tmp_path, report_date="2026-03-24")
         return {"report_paths": report_paths, "portal_paths": {}}
 
@@ -282,7 +255,7 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_zero_by_default(
         def today(cls):
             return cls(2026, 3, 24)
 
-    candidate_config = _write_candidate_config(tmp_path / "research_candidates.yaml")
+    candidate_config = write_candidate_config(tmp_path / "research_candidates.yaml")
     _install_smoke_env(
         tmp_path,
         monkeypatch,
@@ -344,7 +317,7 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_two_with_fail_fl
         def today(cls):
             return cls(2026, 3, 24)
 
-    candidate_config = _write_candidate_config(tmp_path / "research_candidates.yaml")
+    candidate_config = write_candidate_config(tmp_path / "research_candidates.yaml")
     _install_smoke_env(
         tmp_path,
         monkeypatch,
@@ -407,7 +380,7 @@ def test_research_governance_pipeline_cli_smoke_fatal_summary_writes_partial_pip
         def today(cls):
             return cls(2026, 3, 24)
 
-    candidate_config = _write_candidate_config(tmp_path / "research_candidates.yaml")
+    candidate_config = write_candidate_config(tmp_path / "research_candidates.yaml")
     _install_smoke_env(
         tmp_path,
         monkeypatch,

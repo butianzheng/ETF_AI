@@ -5,6 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.support.research_candidates import (
+    ADVANCED_TEST_CANDIDATES,
+    assert_candidate_specs,
+    write_candidate_config,
+)
+
 
 def test_run_research_governance_pipeline_happy_path(tmp_path, monkeypatch):
     from src.governance.automation import GovernanceCycleResult
@@ -1026,24 +1032,7 @@ def test_research_governance_pipeline_cli_main_loads_candidate_config_and_forwar
     import scripts.run_research_governance_pipeline as cli
 
     candidate_config = tmp_path / "research_candidates.yaml"
-    candidate_config.write_text(
-        """
-research:
-  candidates:
-    - name: baseline_trend
-      strategy_id: trend_momentum
-      description: baseline
-      overrides: {}
-    - name: fast_turn
-      strategy_id: risk_adjusted_momentum
-      description: fast
-      overrides:
-        strategy_params:
-          rebalance_frequency: biweekly
-          hold_count: 2
-""".strip(),
-        encoding="utf-8",
-    )
+    write_candidate_config(candidate_config, candidates=ADVANCED_TEST_CANDIDATES)
 
     calls: dict[str, object] = {}
 
@@ -1079,25 +1068,7 @@ research:
     )
 
     assert exit_code == 0
-    assert calls["candidate_specs"] == [
-        {
-            "name": "baseline_trend",
-            "strategy_id": "trend_momentum",
-            "description": "baseline",
-            "overrides": {},
-        },
-        {
-            "name": "fast_turn",
-            "strategy_id": "risk_adjusted_momentum",
-            "description": "fast",
-            "overrides": {
-                "strategy_params": {
-                    "rebalance_frequency": "biweekly",
-                    "hold_count": 2,
-                }
-            },
-        },
-    ]
+    assert_candidate_specs(calls["candidate_specs"], candidates=ADVANCED_TEST_CANDIDATES)
     assert calls["initial_capital"] == pytest.approx(123456.78)
     assert calls["fee_rate"] == pytest.approx(0.0025)
     assert calls["log_level"] == "DEBUG"
@@ -1118,7 +1089,7 @@ def test_research_governance_pipeline_cli_main_uses_shared_candidate_specs_loade
         }
     ]
     candidate_config = tmp_path / "research_candidates.yaml"
-    candidate_config.write_text("research:\n  candidates: []\n", encoding="utf-8")
+    write_candidate_config(candidate_config)
 
     monkeypatch.setattr(cli, "load_candidate_specs", lambda path: sentinel_specs, raising=False)
     monkeypatch.setattr(

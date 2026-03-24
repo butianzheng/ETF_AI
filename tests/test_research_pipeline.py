@@ -10,6 +10,11 @@ from src.research_candidate_config import load_candidate_specs, parse_candidate_
 from src.research_pipeline import run_research_pipeline
 from src.storage.database import init_db
 from src.storage.repositories import PriceRepository
+from tests.support.research_candidates import (
+    ADVANCED_TEST_CANDIDATES,
+    assert_candidate_specs,
+    write_candidate_config,
+)
 
 
 def _seed_symbol(symbol: str, start_date: date, days: int, base: float, slope: float) -> None:
@@ -93,31 +98,9 @@ def test_default_research_config_loaded():
 
 
 def test_parse_candidate_config_data_returns_candidate_specs():
-    data = {
-        "research": {
-            "candidates": [
-                {
-                    "name": "fast_rebalance",
-                    "strategy_id": "risk_adjusted_momentum",
-                    "description": "test candidate",
-                    "overrides": {
-                        "strategy_params": {
-                            "volatility_penalty_weight": 0.8,
-                        }
-                    },
-                }
-            ]
-        }
-    }
-
-    assert parse_candidate_config_data(data) == [
-        {
-            "name": "fast_rebalance",
-            "strategy_id": "risk_adjusted_momentum",
-            "description": "test candidate",
-            "overrides": {"strategy_params": {"volatility_penalty_weight": 0.8}},
-        }
-    ]
+    assert_candidate = ADVANCED_TEST_CANDIDATES[1]
+    data = {"research": {"candidates": [assert_candidate]}}
+    assert_candidate_specs(parse_candidate_config_data(data), candidates=[assert_candidate])
 
 
 def test_load_candidate_specs_returns_none_without_candidate_config():
@@ -126,30 +109,11 @@ def test_load_candidate_specs_returns_none_without_candidate_config():
 
 def test_load_candidate_specs_reads_yaml_from_path(tmp_path):
     config_path = tmp_path / "research.yaml"
-    config_path.write_text(
-        """
-research:
-  candidates:
-    - name: fast_rebalance
-      strategy_id: risk_adjusted_momentum
-      description: test candidate
-      overrides:
-        strategy_params:
-          volatility_penalty_weight: 0.8
-""".strip(),
-        encoding="utf-8",
-    )
+    write_candidate_config(config_path, candidates=[ADVANCED_TEST_CANDIDATES[1]])
 
     candidate_specs = load_candidate_specs(str(config_path))
 
-    assert candidate_specs == [
-        {
-            "name": "fast_rebalance",
-            "strategy_id": "risk_adjusted_momentum",
-            "description": "test candidate",
-            "overrides": {"strategy_params": {"volatility_penalty_weight": 0.8}},
-        }
-    ]
+    assert_candidate_specs(candidate_specs, candidates=[ADVANCED_TEST_CANDIDATES[1]])
 
 
 def test_run_research_main_uses_shared_candidate_specs_loader(tmp_path, monkeypatch):
@@ -165,7 +129,7 @@ def test_run_research_main_uses_shared_candidate_specs_loader(tmp_path, monkeypa
         }
     ]
     candidate_config = tmp_path / "research_candidates.yaml"
-    candidate_config.write_text("research:\n  candidates: []\n", encoding="utf-8")
+    write_candidate_config(candidate_config)
 
     monkeypatch.setattr(
         cli,
