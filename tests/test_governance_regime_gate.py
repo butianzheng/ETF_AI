@@ -1,7 +1,12 @@
 from datetime import date
 
+import pandas as pd
+import pytest
+
+from src.core.config import ConfigLoader
 from src.core.config import GovernanceRegimeGateConfig
-from src.governance.regime_gate import evaluate_regime_gate
+from src.governance import regime_gate
+from src.governance.regime_gate import evaluate_regime_gate, resolve_current_regime
 from src.research.regime import RegimeSnapshot
 
 
@@ -21,6 +26,23 @@ def build_snapshot(regime_label: str, reason_codes: list[str] | None = None) -> 
         reason_codes=reason_codes or [],
         metrics_snapshot={"coverage": 5},
     )
+
+
+def _build_price_frame(closes: list[float], start_date: str = "2025-01-01") -> pd.DataFrame:
+    trade_dates = pd.bdate_range(start=start_date, periods=len(closes))
+    return pd.DataFrame({"trade_date": trade_dates, "close": closes})
+
+
+def make_risk_off_price_data() -> dict[str, pd.DataFrame]:
+    base = [100.0] * 90
+    tail_a = [100.0, 96.0, 99.0, 93.0, 95.0, 89.0, 91.0, 84.0, 86.0, 80.0] * 5
+    tail_b = [100.0, 97.0, 98.0, 92.0, 94.0, 88.0, 90.0, 85.0, 84.0, 79.0] * 5
+    tail_c = [100.0, 99.0, 97.0, 96.0, 93.0, 91.0, 89.0, 87.0, 85.0, 83.0] * 5
+    return {
+        "510300": _build_price_frame(base + tail_a),
+        "510500": _build_price_frame(base + tail_b),
+        "159915": _build_price_frame(base + tail_c),
+    }
 
 
 def summary_with_candidate_regimes() -> dict:
@@ -218,6 +240,126 @@ def test_regime_gate_skips_when_current_regime_is_uncertain():
 
     assert result.gate_status == "skipped"
     assert result.skip_reason == "CURRENT_REGIME_UNCERTAIN"
+
+
+def test_resolve_current_regime_passes_as_of_date_to_injected_loader():
+    received: dict[str, object] = {}
+
+    def injected_loader(*, as_of_date: date, lookback_days: int) -> dict[str, pd.DataFrame]:
+        received["as_of_date"] = as_of_date
+        received["lookback_days"] = lookback_days
+        return make_risk_off_price_data()
+
+    snapshot = resolve_current_regime(
+        as_of_date=date(2026, 3, 24),
+        load_price_data=injected_loader,
+        regime_config=ConfigLoader().load_research_config().regime,
+        lookback_days=365,
+    )
+
+    assert snapshot is not None
+    assert snapshot.regime_label == "risk_off"
+    assert received["as_of_date"] == date(2026, 3, 24)
+    assert received["lookback_days"] == 365
+
+
+def test_resolve_current_regime_clamps_lookback_days_for_injected_loader():
+    received: dict[str, object] = {}
+
+    def injected_loader(*, as_of_date: date, lookback_days: int) -> dict[str, pd.DataFrame]:
+        received["as_of_date"] = as_of_date
+        received["lookback_days"] = lookback_days
+        return make_risk_off_price_data()
+
+    snapshot = resolve_current_regime(
+        as_of_date=date(2026, 3, 24),
+        load_price_data=injected_loader,
+        regime_config=ConfigLoader().load_research_config().regime,
+        lookback_days=30,
+    )
+
+    assert snapshot is not None
+    assert snapshot.regime_label == "risk_off"
+    assert received["as_of_date"] == date(2026, 3, 24)
+    assert received["lookback_days"] == 240
+
+
+def test_resolve_current_regime_returns_none_when_no_snapshot():
+    def injected_loader(*, as_of_date: date, lookback_days: int) -> dict[str, pd.DataFrame]:
+        _ = as_of_date
+        _ = lookback_days
+        return {}
+
+    snapshot = resolve_current_regime(
+        as_of_date=date(2026, 3, 24),
+        load_price_data=injected_loader,
+        regime_config=ConfigLoader().load_research_config().regime,
+        lookback_days=365,
+    )
+
+    assert snapshot is None
+
+
+def test_load_price_data_for_regime_skips_failed_symbol(monkeypatch: pytest.MonkeyPatch):
+    class StubETF:
+        def __init__(self, code: str, enabled: bool = True):
+            self.code = code
+            self.enabled = enabled
+
+    class StubConfigLoader:
+        def load_etf_pool(self):
+            return [StubETF("510300"), StubETF("159915")]
+
+    class StubFetcher:
+        def fetch_etf_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+            if symbol == "510300":
+                raise RuntimeError("boom")
+            return pd.DataFrame(
+                {
+                    "trade_date": pd.bdate_range(start="2025-01-01", periods=5),
+                    "close": [1, 2, 3, 4, 5],
+                }
+            )
+
+    monkeypatch.setattr(regime_gate, "ConfigLoader", StubConfigLoader)
+    monkeypatch.setattr(regime_gate, "DataFetcher", StubFetcher)
+
+    price_data = regime_gate._load_price_data_for_regime(date(2026, 3, 24), 365)
+
+    assert "510300" not in price_data
+    assert "159915" in price_data
+
+
+def test_load_price_data_for_regime_keeps_empty_symbol_without_error(monkeypatch: pytest.MonkeyPatch):
+    class StubETF:
+        def __init__(self, code: str, enabled: bool = True):
+            self.code = code
+            self.enabled = enabled
+
+    class StubConfigLoader:
+        def load_etf_pool(self):
+            return [StubETF("510300"), StubETF("159915")]
+
+    class StubFetcher:
+        def fetch_etf_daily(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
+            if symbol == "510300":
+                return pd.DataFrame()
+            return pd.DataFrame(
+                {
+                    "trade_date": pd.bdate_range(start="2025-01-01", periods=5),
+                    "close": [1, 2, 3, 4, 5],
+                }
+            )
+
+    monkeypatch.setattr(regime_gate, "ConfigLoader", StubConfigLoader)
+    monkeypatch.setattr(regime_gate, "DataFetcher", StubFetcher)
+
+    price_data = regime_gate._load_price_data_for_regime(date(2026, 3, 24), 365)
+
+    assert "510300" in price_data
+    assert price_data["510300"].empty
+    assert set(["trade_date", "close"]).issubset(set(price_data["510300"].columns))
+    assert "159915" in price_data
 
 
 def test_regime_gate_skips_when_selected_strategy_regime_stats_missing():

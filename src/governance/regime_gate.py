@@ -2,13 +2,64 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Literal
+from datetime import date, timedelta
+from typing import Any, Callable, Literal
 
-from src.core.config import GovernanceRegimeGateConfig
-from src.research.regime import RegimeSnapshot
+import pandas as pd
+
+from src.core.config import ConfigLoader, GovernanceRegimeGateConfig, ResearchRegimeConfig
+from src.data.fetcher import DataFetcher
+from src.data.normalizer import DataNormalizer
+from src.research.regime import RegimeClassifier, RegimeSnapshot
 
 
 UNCERTAIN_REASON_CODES = {"INSUFFICIENT_POOL_COVERAGE", "CONFLICTING_RULES"}
+MIN_REGIME_LOOKBACK_DAYS = 240
+
+
+def resolve_current_regime(
+    as_of_date: date,
+    regime_config: ResearchRegimeConfig,
+    load_price_data: Callable[..., dict[str, pd.DataFrame]] | None = None,
+    lookback_days: int = 365,
+) -> RegimeSnapshot | None:
+    """解析 as_of_date 对应的最新市场状态快照。"""
+    effective_lookback_days = max(lookback_days, MIN_REGIME_LOOKBACK_DAYS)
+    price_data = (load_price_data or _load_price_data_for_regime)(
+        as_of_date=as_of_date,
+        lookback_days=effective_lookback_days,
+    )
+    snapshots = RegimeClassifier(regime_config).classify(price_data)
+    return snapshots[-1] if snapshots else None
+
+
+def _load_price_data_for_regime(as_of_date: date, lookback_days: int) -> dict[str, pd.DataFrame]:
+    config_loader = ConfigLoader()
+    fetcher = DataFetcher()
+    normalizer = DataNormalizer()
+    start_date = as_of_date - timedelta(days=lookback_days)
+    price_data: dict[str, pd.DataFrame] = {}
+    for etf in config_loader.load_etf_pool():
+        if not etf.enabled:
+            continue
+        try:
+            raw_df = fetcher.fetch_etf_daily(
+                symbol=etf.code,
+                start_date=start_date.strftime("%Y%m%d"),
+                end_date=as_of_date.strftime("%Y%m%d"),
+            )
+        except Exception:
+            continue
+        if raw_df.empty:
+            price_data[etf.code] = pd.DataFrame(columns=["trade_date", "close"])
+            continue
+        normalized_df = normalizer.normalize_price_data(raw_df)
+        if normalized_df.empty and "trade_date" not in normalized_df.columns:
+            price_data[etf.code] = pd.DataFrame(columns=["trade_date", "close"])
+            continue
+        deduped_df = normalizer.remove_duplicates(normalized_df)
+        price_data[etf.code] = deduped_df
+    return price_data
 
 
 @dataclass(frozen=True)
