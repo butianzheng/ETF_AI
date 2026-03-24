@@ -2,6 +2,8 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 
 def test_run_research_governance_pipeline_happy_path(tmp_path, monkeypatch):
     from src.governance.automation import GovernanceCycleResult
@@ -445,3 +447,234 @@ def test_run_research_governance_pipeline_portal_reflects_current_decision(tmp_p
     portal_payload = json.loads(portal_summary_path.read_text(encoding="utf-8"))
     assert portal_payload["governance_summary"]["latest_decision"]["id"] == decision_id
     assert portal_payload["governance_summary"]["latest_decision"]["review_status"] == "ready"
+
+
+def test_run_research_governance_pipeline_blocked_writes_all_artifacts_and_exit_zero(
+    tmp_path, monkeypatch
+):
+    from src.governance.automation import GovernanceCycleResult
+    from src.governance.models import GovernanceDecision
+    import src.governance_pipeline as pipeline
+
+    class FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 3, 24)
+
+    class DummyGovernanceConfig:
+        pass
+
+    class DummyStrategyConfig:
+        governance = DummyGovernanceConfig()
+
+    research_json = tmp_path / "reports" / "research" / "2026-03-11.json"
+    research_json.parent.mkdir(parents=True, exist_ok=True)
+    research_json.write_text("{}", encoding="utf-8")
+
+    summary_json = tmp_path / "reports" / "research" / "summary" / "research_summary.json"
+    summary_json.parent.mkdir(parents=True, exist_ok=True)
+    summary_json.write_text("{}", encoding="utf-8")
+
+    portal_json = tmp_path / "reports" / "portal_summary.json"
+    portal_html = tmp_path / "reports" / "index.html"
+    portal_json.write_text("{}", encoding="utf-8")
+    portal_html.write_text("<html></html>", encoding="utf-8")
+
+    decision = GovernanceDecision(
+        id=9,
+        decision_date=FakeDate.today(),
+        current_strategy_id="trend_momentum",
+        selected_strategy_id="risk_adjusted_momentum",
+        previous_strategy_id="trend_momentum",
+        fallback_strategy_id="trend_momentum",
+        decision_type="keep",
+        review_status="blocked",
+        blocked_reasons=["SELECTED_STRATEGY_REGIME_MISMATCH"],
+        reason_codes=["REGIME_GATE_BLOCKED"],
+        evidence={"source": "cycle"},
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "date", FakeDate)
+    monkeypatch.setattr(
+        pipeline,
+        "run_research_pipeline",
+        lambda **kwargs: {
+            "report_paths": {"json": str(research_json)},
+            "portal_paths": {},
+        },
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "aggregate_research_reports",
+        lambda **kwargs: {"output_paths": {"json": str(summary_json)}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "build_report_portal",
+        lambda **kwargs: {
+            "output_paths": {
+                "json": str(portal_json),
+                "html": str(portal_html),
+            }
+        },
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "run_governance_cycle",
+        lambda **kwargs: GovernanceCycleResult(
+            decision=decision,
+            summary_hash="summary-hash-blocked",
+            created_new=False,
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_strategy_config",
+        lambda: DummyStrategyConfig(),
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_production_strategy_id",
+        lambda: "trend_momentum",
+    )
+
+    result = pipeline.run_research_governance_pipeline(
+        start_date=date(2025, 12, 1),
+        end_date=date(2026, 3, 11),
+        fail_on_blocked=False,
+    )
+
+    assert result["exit_code"] == 0
+    assert Path(result["governance_cycle_path"]).exists()
+    assert Path(result["governance_review_path"]).exists()
+    assert Path(result["pipeline_summary_path"]).exists()
+
+    pipeline_payload = json.loads(Path(result["pipeline_summary_path"]).read_text(encoding="utf-8"))
+    assert pipeline_payload["final_decision"]["review_status"] == "blocked"
+    assert pipeline_payload["final_decision"]["blocked_reasons"] == [
+        "SELECTED_STRATEGY_REGIME_MISMATCH"
+    ]
+
+
+def test_run_research_governance_pipeline_blocked_exit_two_when_fail_on_blocked_enabled(
+    tmp_path, monkeypatch
+):
+    from src.governance.automation import GovernanceCycleResult
+    from src.governance.models import GovernanceDecision
+    import src.governance_pipeline as pipeline
+
+    class FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 3, 24)
+
+    class DummyGovernanceConfig:
+        pass
+
+    class DummyStrategyConfig:
+        governance = DummyGovernanceConfig()
+
+    summary_json = tmp_path / "reports" / "research" / "summary" / "research_summary.json"
+    summary_json.parent.mkdir(parents=True, exist_ok=True)
+    summary_json.write_text("{}", encoding="utf-8")
+
+    decision = GovernanceDecision(
+        id=10,
+        decision_date=FakeDate.today(),
+        current_strategy_id="trend_momentum",
+        selected_strategy_id="risk_adjusted_momentum",
+        previous_strategy_id="trend_momentum",
+        fallback_strategy_id="trend_momentum",
+        decision_type="keep",
+        review_status="blocked",
+        blocked_reasons=["SELECTED_STRATEGY_REGIME_MISMATCH"],
+        reason_codes=["REGIME_GATE_BLOCKED"],
+        evidence={"source": "cycle"},
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "date", FakeDate)
+    monkeypatch.setattr(
+        pipeline,
+        "run_research_pipeline",
+        lambda **kwargs: {"report_paths": {}, "portal_paths": {}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "aggregate_research_reports",
+        lambda **kwargs: {"output_paths": {"json": str(summary_json)}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "build_report_portal",
+        lambda **kwargs: {"output_paths": {}},
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "run_governance_cycle",
+        lambda **kwargs: GovernanceCycleResult(
+            decision=decision,
+            summary_hash="summary-hash-blocked",
+            created_new=False,
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_strategy_config",
+        lambda: DummyStrategyConfig(),
+    )
+    monkeypatch.setattr(
+        pipeline.config_loader,
+        "load_production_strategy_id",
+        lambda: "trend_momentum",
+    )
+
+    result = pipeline.run_research_governance_pipeline(
+        start_date=date(2025, 12, 1),
+        end_date=date(2026, 3, 11),
+        fail_on_blocked=True,
+    )
+
+    assert result["exit_code"] == 2
+
+
+def test_run_research_governance_pipeline_writes_partial_summary_before_raising_fatal(
+    tmp_path, monkeypatch
+):
+    import src.governance_pipeline as pipeline
+
+    class FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 3, 24)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "date", FakeDate)
+    monkeypatch.setattr(
+        pipeline,
+        "run_research_pipeline",
+        lambda **kwargs: {"report_paths": {}, "portal_paths": {}},
+    )
+
+    def raise_summary_error(**kwargs):
+        raise RuntimeError("summary step fatal")
+
+    monkeypatch.setattr(pipeline, "aggregate_research_reports", raise_summary_error)
+
+    with pytest.raises(RuntimeError, match="summary step fatal"):
+        pipeline.run_research_governance_pipeline(
+            start_date=date(2025, 12, 1),
+            end_date=date(2026, 3, 11),
+        )
+
+    partial_summary_path = tmp_path / "reports" / "governance" / "pipeline" / "2026-03-24.json"
+    assert partial_summary_path.exists()
+    payload = json.loads(partial_summary_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["failed_step"] == "summary"
+    assert payload["error"]["type"] == "RuntimeError"
+    assert payload["error"]["message"] == "summary step fatal"
+
+    assert not (tmp_path / "reports" / "governance" / "cycle" / "2026-03-24.json").exists()
+    assert not (tmp_path / "reports" / "governance" / "2026-03-24.json").exists()

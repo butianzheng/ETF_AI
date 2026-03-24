@@ -39,6 +39,16 @@ def _write_governance_review_artifact(run_date: date, decision: Any) -> Path:
     )
 
 
+def _build_pipeline_summary_base(
+    research_end_date: date,
+    governance_run_date: date,
+) -> dict[str, Any]:
+    return {
+        "research_end_date": research_end_date.isoformat(),
+        "governance_run_date": governance_run_date.isoformat(),
+    }
+
+
 def _write_pipeline_summary_artifact(
     research_end_date: date,
     governance_run_date: date,
@@ -47,11 +57,12 @@ def _write_pipeline_summary_artifact(
     cycle_result: Any,
     governance_review_path: Path,
 ) -> Path:
-    return _write_json(
-        Path("reports/governance/pipeline") / f"{governance_run_date.isoformat()}.json",
+    payload = _build_pipeline_summary_base(
+        research_end_date=research_end_date,
+        governance_run_date=governance_run_date,
+    )
+    payload.update(
         {
-            "research_end_date": research_end_date.isoformat(),
-            "governance_run_date": governance_run_date.isoformat(),
             "steps": {
                 "research": {
                     "status": "completed",
@@ -84,6 +95,36 @@ def _write_pipeline_summary_artifact(
             },
         },
     )
+    return _write_json(
+        Path("reports/governance/pipeline") / f"{governance_run_date.isoformat()}.json",
+        payload,
+    )
+
+
+def _write_partial_pipeline_summary_artifact(
+    research_end_date: date,
+    governance_run_date: date,
+    failed_step: str,
+    error: Exception,
+) -> Path:
+    payload = _build_pipeline_summary_base(
+        research_end_date=research_end_date,
+        governance_run_date=governance_run_date,
+    )
+    payload.update(
+        {
+            "status": "failed",
+            "failed_step": failed_step,
+            "error": {
+                "type": type(error).__name__,
+                "message": str(error),
+            },
+        }
+    )
+    return _write_json(
+        Path("reports/governance/pipeline") / f"{governance_run_date.isoformat()}.json",
+        payload,
+    )
 
 
 def run_research_governance_pipeline(
@@ -93,53 +134,76 @@ def run_research_governance_pipeline(
     initial_capital: float = 100000.0,
     fee_rate: float = 0.001,
     log_level: str = "INFO",
+    fail_on_blocked: bool = False,
 ) -> dict[str, Any]:
-    research_result = run_research_pipeline(
-        start_date=start_date,
-        end_date=end_date,
-        candidate_specs=candidate_specs,
-        initial_capital=initial_capital,
-        fee_rate=fee_rate,
-        log_level=log_level,
-    )
-    summary_result = aggregate_research_reports(
-        report_dir=Path("reports/research"),
-        output_dir=Path("reports/research/summary"),
-    )
-    build_report_portal(
-        daily_dir=Path("reports/daily"),
-        research_dir=Path("reports/research"),
-        output_dir=Path("reports"),
-    )
-
     run_date = date.today()
-    repo = GovernanceRepository()
+    current_step = "research"
     try:
-        strategy_config = config_loader.load_strategy_config()
-        cycle_result = run_governance_cycle(
-            summary_path=Path(summary_result["output_paths"]["json"]),
-            repo=repo,
-            policy=strategy_config.governance,
-            current_strategy_id=config_loader.load_production_strategy_id(),
+        research_result = run_research_pipeline(
+            start_date=start_date,
+            end_date=end_date,
+            candidate_specs=candidate_specs,
+            initial_capital=initial_capital,
+            fee_rate=fee_rate,
+            log_level=log_level,
         )
-    finally:
-        repo.close()
+        current_step = "summary"
+        summary_result = aggregate_research_reports(
+            report_dir=Path("reports/research"),
+            output_dir=Path("reports/research/summary"),
+        )
+        current_step = "portal_pre_governance"
+        build_report_portal(
+            daily_dir=Path("reports/daily"),
+            research_dir=Path("reports/research"),
+            output_dir=Path("reports"),
+        )
 
-    governance_cycle_path = _write_governance_cycle_artifact(run_date, cycle_result)
-    governance_review_path = _write_governance_review_artifact(run_date, cycle_result.decision)
-    pipeline_summary_path = _write_pipeline_summary_artifact(
-        research_end_date=end_date,
-        governance_run_date=run_date,
-        research_result=research_result,
-        summary_result=summary_result,
-        cycle_result=cycle_result,
-        governance_review_path=governance_review_path,
-    )
-    portal_result = build_report_portal(
-        daily_dir=Path("reports/daily"),
-        research_dir=Path("reports/research"),
-        output_dir=Path("reports"),
-    )
+        current_step = "governance_cycle"
+        repo = GovernanceRepository()
+        try:
+            strategy_config = config_loader.load_strategy_config()
+            cycle_result = run_governance_cycle(
+                summary_path=Path(summary_result["output_paths"]["json"]),
+                repo=repo,
+                policy=strategy_config.governance,
+                current_strategy_id=config_loader.load_production_strategy_id(),
+            )
+        finally:
+            repo.close()
+
+        current_step = "governance_cycle_artifact"
+        governance_cycle_path = _write_governance_cycle_artifact(run_date, cycle_result)
+        current_step = "governance_review_artifact"
+        governance_review_path = _write_governance_review_artifact(run_date, cycle_result.decision)
+        current_step = "pipeline_summary"
+        pipeline_summary_path = _write_pipeline_summary_artifact(
+            research_end_date=end_date,
+            governance_run_date=run_date,
+            research_result=research_result,
+            summary_result=summary_result,
+            cycle_result=cycle_result,
+            governance_review_path=governance_review_path,
+        )
+        current_step = "portal_final_refresh"
+        portal_result = build_report_portal(
+            daily_dir=Path("reports/daily"),
+            research_dir=Path("reports/research"),
+            output_dir=Path("reports"),
+        )
+    except Exception as exc:
+        _write_partial_pipeline_summary_artifact(
+            research_end_date=end_date,
+            governance_run_date=run_date,
+            failed_step=current_step,
+            error=exc,
+        )
+        raise
+
+    exit_code = 0
+    if fail_on_blocked and cycle_result.decision.review_status == "blocked":
+        exit_code = 2
+
     return {
         "research_result": research_result,
         "summary_result": summary_result,
@@ -148,5 +212,5 @@ def run_research_governance_pipeline(
         "governance_cycle_path": str(governance_cycle_path),
         "governance_review_path": str(governance_review_path),
         "pipeline_summary_path": str(pipeline_summary_path),
-        "exit_code": 0,
+        "exit_code": exit_code,
     }
