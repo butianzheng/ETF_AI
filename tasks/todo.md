@@ -209,7 +209,7 @@
 
 ### 关键验证
 
-- 最终聚焦回归：`pytest tests/test_research_pipeline.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`24 passed in 1.75s`）
+- 最终聚焦回归：`pytest tests/test_research_pipeline.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`24 passed in 1.41s`）
 
 ## 下一步行动
 
