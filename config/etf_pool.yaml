@@ -1,0 +1,20 @@
+etf_pool:
+  - code: "510300"
+    name: "沪深300ETF"
+    category: "broad"
+    enabled: true
+
+  - code: "510500"
+    name: "中证500ETF"
+    category: "broad"
+    enabled: true
+
+  - code: "159915"
+    name: "创业板ETF"
+    category: "growth"
+    enabled: true
+
+  - code: "515180"
+    name: "红利ETF"
+    category: "dividend"
+    enabled: true

@@ -1,0 +1,33 @@
+production_strategy_id: "trend_momentum"
+
+strategy:
+  name: "etf_momentum_v1"
+  version: "1.0.0"
+  rebalance_frequency: "monthly"  # monthly, biweekly
+  hold_count: 1
+
+  trade_policy:
+    rebalance_frequency: "monthly"
+    execution_delay_trading_days: 1
+    lot_size: 100
+    fee_rate: 0.001
+
+  # 动量评分配置
+  score_formula:
+    return_20_weight: 0.5
+    return_60_weight: 0.5
+
+  # 趋势过滤配置
+  # 注意：当前生产候选策略（trend_momentum）在 enabled=true 时仅支持 ma_period=120 且 ma_type=sma。
+  trend_filter:
+    enabled: true
+    ma_period: 120
+    ma_type: "sma"
+
+  # 防御模式配置
+  defensive_mode:
+    enabled: false
+    defensive_etf: null  # 例如: "511880" (银华日利)
+
+  # 空仓配置
+  allow_cash: true

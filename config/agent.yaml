@@ -1,0 +1,36 @@
+agents:
+  data_qa:
+    enabled: true
+    model: "gpt-4o-mini"
+    temperature: 0.3
+    max_tokens: 2000
+
+  research:
+    enabled: true
+    model: "gpt-4o-mini"
+    temperature: 0.5
+    max_tokens: 3000
+
+  risk_monitor:
+    enabled: true
+    model: "gpt-4o-mini"
+    temperature: 0.3
+    max_tokens: 2000
+
+  report:
+    enabled: true
+    model: "gpt-4o-mini"
+    temperature: 0.5
+    max_tokens: 2000
+
+# Agent约束
+constraints:
+  allow_agent_modify_production_strategy: false
+  allow_agent_execute_order: false
+
+# LLM配置
+llm:
+  provider: "openai"  # openai, anthropic
+  api_base: null  # 可选，用于自定义API端点
+  timeout: 30
+  max_retries: 3

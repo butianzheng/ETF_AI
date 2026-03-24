@@ -1,0 +1,13 @@
+research:
+  candidates:
+    - name: baseline_trend
+      strategy_id: trend_momentum
+      description: 基线参数
+      overrides: {}
+
+    - name: risk_adjusted_baseline
+      strategy_id: risk_adjusted_momentum
+      description: 在动量评分中加入波动惩罚
+      overrides:
+        strategy_params:
+          volatility_penalty_weight: 0.6

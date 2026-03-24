@@ -1,0 +1,31 @@
+# 数据处理
+pandas>=2.0,<2.3
+numpy>=1.24,<2.0
+
+# 数据获取
+akshare>=1.12.0
+
+# 数据库
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+
+# 配置管理
+pyyaml>=6.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# AI API
+openai>=1.0.0
+
+# 日志和工具
+loguru>=0.7.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+
+# 日期时间
+python-dateutil>=2.8.0
+
+# 开发工具
+pytest>=7.4.0
+black>=23.0.0
+ruff>=0.1.0
