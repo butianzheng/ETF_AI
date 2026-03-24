@@ -113,11 +113,63 @@ def test_workflow_runner_happy_path_defaults_to_no_publish(tmp_path, monkeypatch
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["publish_result"]["executed"] is False
     assert payload["exit_code"] == 0
+
+
+def test_workflow_runner_forwards_create_rollback_draft_only_to_health_check(tmp_path, monkeypatch):
+    import scripts.run_end_to_end_workflow as cli
+
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "run_research_governance_pipeline",
+        lambda **kwargs: calls.append(("research_governance", kwargs)) or {
+            "research_result": {"report_paths": {"json": "reports/research/2026-03-24.json"}},
+            "summary_result": {"output_paths": {"json": "reports/research/summary/research_summary.json"}},
+            "cycle_result": type(
+                "CycleResult",
+                (),
+                {
+                    "decision": type(
+                        "Decision",
+                        (),
+                        {"id": 12, "review_status": "ready", "blocked_reasons": []},
+                    )()
+                },
+            )(),
+            "pipeline_summary_path": "reports/governance/pipeline/2026-03-24.json",
+            "exit_code": 0,
+        },
+    )
+    monkeypatch.setattr(
+        cli,
+        "check_governance_health",
+        lambda **kwargs: calls.append(("health", kwargs))
+        or type("HealthResult", (), {"incidents": [], "rollback_recommendation": None})(),
+    )
+    monkeypatch.setattr(cli, "_write_health_report", lambda result: "reports/governance/health/2026-03-24.json")
+
+    exit_code = cli.main(
+        [
+            "--start-date",
+            "2025-12-01",
+            "--end-date",
+            "2026-03-24",
+            "--create-rollback-draft",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls[0][0] == "research_governance"
+    assert "create_rollback_draft" not in calls[0][1]
+    assert calls[1][0] == "health"
+    assert calls[1][1]["create_rollback_draft"] is True
 ```
 
 - [ ] **Step 2: 跑测试，确认新脚本尚未实现**
 
-Run: `pytest tests/test_end_to_end_workflow_runner.py -q -k "requires_approved_by or defaults_to_no_publish"`
+Run: `pytest tests/test_end_to_end_workflow_runner.py -q -k "requires_approved_by or defaults_to_no_publish or create_rollback_draft"`
 
 Expected:
 - FAIL
@@ -163,10 +215,11 @@ def main(argv: list[str] | None = None) -> int:
 - 默认不 publish
 - 仅实现 happy-path no-publish 最小编排
 - summary 固定写到 `reports/workflow/end_to_end_workflow_summary.json`
+- `--create-rollback-draft` 只透传给 `check_governance_health(...)`
 
 - [ ] **Step 4: 回跑 Task 1 测试，确认骨架闭合**
 
-Run: `pytest tests/test_end_to_end_workflow_runner.py -q -k "requires_approved_by or defaults_to_no_publish"`
+Run: `pytest tests/test_end_to_end_workflow_runner.py -q -k "requires_approved_by or defaults_to_no_publish or create_rollback_draft"`
 
 Expected:
 - PASS
