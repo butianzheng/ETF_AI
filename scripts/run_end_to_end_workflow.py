@@ -108,51 +108,121 @@ def _research_governance_payload(pipeline_result: dict[str, Any]) -> dict[str, A
     }
 
 
+def _error_payload(error: Exception) -> dict[str, str]:
+    return {
+        "type": type(error).__name__,
+        "message": str(error),
+    }
+
+
+def _failed_summary_payload(
+    *,
+    failed_step: str,
+    error: Exception,
+    daily_result: dict[str, Any],
+    research_governance_result: dict[str, Any],
+    health_check_result: dict[str, Any],
+    publish_result: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "failed_step": failed_step,
+        "error": _error_payload(error),
+        "daily_result": daily_result,
+        "research_governance_result": research_governance_result,
+        "health_check_result": health_check_result,
+        "publish_result": publish_result,
+        "exit_code": 1,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    pipeline_result = run_research_governance_pipeline(
-        start_date=date.fromisoformat(args.start_date),
-        end_date=date.fromisoformat(args.end_date),
-        candidate_specs=load_candidate_specs(args.candidate_config),
-        initial_capital=args.initial_capital,
-        fee_rate=args.fee_rate,
-        log_level=args.log_level,
-        fail_on_blocked=args.fail_on_blocked,
-    )
+    daily_result = {"executed": False, "artifacts": {}}
+    research_governance_result: dict[str, Any] = {}
+    health_check_result: dict[str, Any] = {"executed": False, "report_path": None}
+    publish_result: dict[str, Any] = {"executed": False, "decision": None}
+
+    try:
+        pipeline_result = run_research_governance_pipeline(
+            start_date=date.fromisoformat(args.start_date),
+            end_date=date.fromisoformat(args.end_date),
+            candidate_specs=load_candidate_specs(args.candidate_config),
+            initial_capital=args.initial_capital,
+            fee_rate=args.fee_rate,
+            log_level=args.log_level,
+            fail_on_blocked=args.fail_on_blocked,
+        )
+    except Exception as error:
+        _write_workflow_summary(
+            _failed_summary_payload(
+                failed_step="research_governance",
+                error=error,
+                daily_result=daily_result,
+                research_governance_result=research_governance_result,
+                health_check_result=health_check_result,
+                publish_result=publish_result,
+            )
+        )
+        return 1
+
+    research_governance_result = _research_governance_payload(pipeline_result)
+    review_status = research_governance_result.get("review_status")
+    blocked = review_status == "blocked"
+    blocked_exit_code = int(pipeline_result.get("exit_code", 0))
+    if args.fail_on_blocked and blocked:
+        blocked_exit_code = 2
 
     repo = GovernanceRepository()
     policy_loader = ConfigLoader(str(PROJECT_ROOT / "config"))
     try:
-        health_result = check_governance_health(
-            report_dir="reports/daily",
-            repo=repo,
-            policy=policy_loader.load_strategy_config().governance,
-            create_rollback_draft=args.create_rollback_draft,
-            summary_path=(
-                pipeline_result.get("summary_result", {})
-                .get("output_paths", {})
-                .get("json", "reports/research/summary/research_summary.json")
-            ),
-        )
+        try:
+            health_result = check_governance_health(
+                report_dir="reports/daily",
+                repo=repo,
+                policy=policy_loader.load_strategy_config().governance,
+                create_rollback_draft=args.create_rollback_draft,
+                summary_path=(
+                    pipeline_result.get("summary_result", {})
+                    .get("output_paths", {})
+                    .get("json", "reports/research/summary/research_summary.json")
+                ),
+            )
+            health_report_path = _write_health_report(health_result)
+        except Exception as error:
+            _write_workflow_summary(
+                _failed_summary_payload(
+                    failed_step="health_check",
+                    error=error,
+                    daily_result=daily_result,
+                    research_governance_result=research_governance_result,
+                    health_check_result=health_check_result,
+                    publish_result=publish_result,
+                )
+            )
+            return 1
     finally:
         repo.close()
 
-    health_report_path = _write_health_report(health_result)
-    exit_code = int(pipeline_result.get("exit_code", 0))
+    health_check_result = {
+        "executed": True,
+        "report_path": health_report_path,
+        **_health_payload(health_result),
+    }
+
+    if args.publish and blocked:
+        publish_result["publish_blocked_reason"] = "governance_review_status_blocked"
+
     summary_payload = {
-        "daily_result": {"executed": False, "artifacts": {}},
-        "research_governance_result": _research_governance_payload(pipeline_result),
-        "health_check_result": {
-            "executed": True,
-            "report_path": health_report_path,
-            **_health_payload(health_result),
-        },
-        "publish_result": {"executed": False, "decision": None},
-        "exit_code": exit_code,
+        "daily_result": daily_result,
+        "research_governance_result": research_governance_result,
+        "health_check_result": health_check_result,
+        "publish_result": publish_result,
+        "exit_code": blocked_exit_code,
     }
     _write_workflow_summary(summary_payload)
     print("publish_executed=false")
-    return exit_code
+    return blocked_exit_code
 
 
 if __name__ == "__main__":
