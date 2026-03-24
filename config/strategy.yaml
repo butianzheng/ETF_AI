@@ -37,6 +37,14 @@ strategy:
     challenger_min_score_margin: 0.05
     champion_max_drawdown_penalty: 0.12
     fallback_strategy_id: "trend_momentum"
+    automation:
+      enabled: true
+      require_fresh_summary: true
+      max_summary_age_days: 7
+      min_reports_required: 3
+      min_days_between_switches: 20
+      block_on_open_incident: true
+      risk_breach_streak: 2
 
   # 空仓配置
   allow_cash: true

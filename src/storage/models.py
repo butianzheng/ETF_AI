@@ -66,6 +66,24 @@ class GovernanceDecisionRecord(Base):
     previous_strategy_id = Column(String, nullable=True)
     fallback_strategy_id = Column(String, nullable=False)
     approved_by = Column(String, nullable=True)
+    summary_hash = Column(String, nullable=True, index=True)
+    source_report_date = Column(String, nullable=True)
+    review_status = Column(String, nullable=False, default="pending")
+    blocked_reasons_json = Column(JSON, nullable=True)
+    reason_codes_json = Column(JSON, nullable=True)
+    evidence_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class GovernanceIncidentRecord(Base):
+    __tablename__ = "governance_incident"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    incident_date = Column(Date, index=True, nullable=False)
+    incident_type = Column(String, index=True, nullable=False)
+    severity = Column(String, nullable=False)
+    status = Column(String, index=True, nullable=False, default="open")
+    strategy_id = Column(String, nullable=True)
     reason_codes_json = Column(JSON, nullable=True)
     evidence_json = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

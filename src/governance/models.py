@@ -19,5 +19,29 @@ class GovernanceDecision(BaseModel):
     decision_type: Literal["keep", "switch", "fallback"]
     status: Literal["draft", "approved", "published", "rolled_back"] = "draft"
     approved_by: str | None = None
+    summary_hash: str | None = None
+    source_report_date: str | None = None
+    review_status: Literal["pending", "ready", "blocked"] = "pending"
+    blocked_reasons: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class GovernanceIncident(BaseModel):
+    """治理巡检或自动化门禁发现的事件。"""
+
+    id: int | None = None
+    incident_date: date
+    incident_type: Literal[
+        "SUMMARY_STALE",
+        "PUBLISH_COOLDOWN",
+        "RISK_BREACH",
+        "STRATEGY_DRIFT",
+        "EXECUTION_FAILURE",
+        "GOVERNANCE_STALE",
+    ]
+    severity: Literal["info", "warning", "critical"]
+    status: Literal["open", "resolved"] = "open"
+    strategy_id: str | None = None
     reason_codes: list[str] = Field(default_factory=list)
     evidence: dict[str, Any] = Field(default_factory=dict)

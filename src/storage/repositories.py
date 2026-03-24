@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from src.governance.models import GovernanceDecision
+from src.governance.models import GovernanceIncident
 from sqlalchemy.orm import Session
 from src.storage.database import SessionLocal
 from src.storage.models import (
@@ -17,6 +18,7 @@ from src.storage.models import (
     BacktestRun,
     ExecutionRecord,
     GovernanceDecisionRecord,
+    GovernanceIncidentRecord,
     MarketPrice,
     PortfolioState,
     StrategySignal,
@@ -220,6 +222,23 @@ def _to_governance_decision(record: GovernanceDecisionRecord) -> GovernanceDecis
         decision_type=record.decision_type,
         status=record.status,
         approved_by=record.approved_by,
+        summary_hash=record.summary_hash,
+        source_report_date=record.source_report_date,
+        review_status=record.review_status,
+        blocked_reasons=record.blocked_reasons_json or [],
+        reason_codes=record.reason_codes_json or [],
+        evidence=record.evidence_json or {},
+    )
+
+
+def _to_governance_incident(record: GovernanceIncidentRecord) -> GovernanceIncident:
+    return GovernanceIncident(
+        id=record.id,
+        incident_date=record.incident_date,
+        incident_type=record.incident_type,
+        severity=record.severity,
+        status=record.status,
+        strategy_id=record.strategy_id,
         reason_codes=record.reason_codes_json or [],
         evidence=record.evidence_json or {},
     )
@@ -254,10 +273,43 @@ class GovernanceRepository(BaseRepository):
             previous_strategy_id=decision.previous_strategy_id,
             fallback_strategy_id=decision.fallback_strategy_id,
             approved_by=decision.approved_by,
+            summary_hash=decision.summary_hash,
+            source_report_date=decision.source_report_date,
+            review_status=decision.review_status,
+            blocked_reasons_json=_to_json_compatible(decision.blocked_reasons),
             reason_codes_json=_to_json_compatible(decision.reason_codes),
             evidence_json=_to_json_compatible(decision.evidence),
         )
         self.session.add(record)
+        self.session.commit()
+        self.session.refresh(record)
+        return _to_governance_decision(record)
+
+    def find_draft_by_summary_hash(self, summary_hash: str) -> GovernanceDecision | None:
+        record = (
+            self.session.query(GovernanceDecisionRecord)
+            .filter(
+                GovernanceDecisionRecord.summary_hash == summary_hash,
+                GovernanceDecisionRecord.status == "draft",
+            )
+            .order_by(GovernanceDecisionRecord.id.desc())
+            .first()
+        )
+        if record is None:
+            return None
+        return _to_governance_decision(record)
+
+    def set_review_status(
+        self,
+        decision_id: int,
+        review_status: str,
+        blocked_reasons: List[str],
+    ) -> GovernanceDecision:
+        record = self.session.get(GovernanceDecisionRecord, decision_id)
+        if record is None:
+            raise ValueError(f"governance decision not found: {decision_id}")
+        record.review_status = review_status
+        record.blocked_reasons_json = _to_json_compatible(blocked_reasons)
         self.session.commit()
         self.session.refresh(record)
         return _to_governance_decision(record)
@@ -315,6 +367,8 @@ class GovernanceRepository(BaseRepository):
             previous_strategy_id=latest.selected_strategy_id,
             fallback_strategy_id=latest.fallback_strategy_id,
             approved_by=approved_by,
+            review_status="ready",
+            blocked_reasons_json=[],
             reason_codes_json=["MANUAL_ROLLBACK"],
             evidence_json={"reason": reason},
         )
@@ -322,6 +376,39 @@ class GovernanceRepository(BaseRepository):
         self.session.commit()
         self.session.refresh(rollback_record)
         return _to_governance_decision(rollback_record)
+
+    def save_incident(self, incident: GovernanceIncident) -> GovernanceIncident:
+        record = GovernanceIncidentRecord(
+            incident_date=incident.incident_date,
+            incident_type=incident.incident_type,
+            severity=incident.severity,
+            status=incident.status,
+            strategy_id=incident.strategy_id,
+            reason_codes_json=_to_json_compatible(incident.reason_codes),
+            evidence_json=_to_json_compatible(incident.evidence),
+        )
+        self.session.add(record)
+        self.session.commit()
+        self.session.refresh(record)
+        return _to_governance_incident(record)
+
+    def list_open_incidents(self) -> List[GovernanceIncident]:
+        records = (
+            self.session.query(GovernanceIncidentRecord)
+            .filter(GovernanceIncidentRecord.status == "open")
+            .order_by(GovernanceIncidentRecord.id.desc())
+            .all()
+        )
+        return [_to_governance_incident(record) for record in records]
+
+    def resolve_incident(self, incident_id: int) -> GovernanceIncident:
+        record = self.session.get(GovernanceIncidentRecord, incident_id)
+        if record is None:
+            raise ValueError(f"governance incident not found: {incident_id}")
+        record.status = "resolved"
+        self.session.commit()
+        self.session.refresh(record)
+        return _to_governance_incident(record)
 
 
 class AgentLogRepository(BaseRepository):

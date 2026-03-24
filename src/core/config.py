@@ -35,6 +35,18 @@ class DefensiveModeConfig(BaseModel):
     defensive_etf: Optional[str] = None
 
 
+class GovernanceAutomationConfig(BaseModel):
+    """治理自动化配置。"""
+
+    enabled: bool = True
+    require_fresh_summary: bool = True
+    max_summary_age_days: int = 7
+    min_reports_required: int = 3
+    min_days_between_switches: int = 20
+    block_on_open_incident: bool = True
+    risk_breach_streak: int = 2
+
+
 class GovernanceConfig(BaseModel):
     """治理层配置。"""
     enabled: bool = True
@@ -44,6 +56,7 @@ class GovernanceConfig(BaseModel):
     challenger_min_score_margin: float = 0.05
     champion_max_drawdown_penalty: float = 0.12
     fallback_strategy_id: str = "trend_momentum"
+    automation: GovernanceAutomationConfig = Field(default_factory=GovernanceAutomationConfig)
 
 
 class StrategyConfig(BaseModel):
