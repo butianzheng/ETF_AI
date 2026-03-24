@@ -1018,3 +1018,86 @@ def test_research_governance_pipeline_cli_main_returns_one_on_fatal_exception(mo
     exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24"])
 
     assert exit_code == 1
+
+
+def test_research_governance_pipeline_cli_main_loads_candidate_config_and_forwards_runtime_args(
+    tmp_path, monkeypatch
+):
+    import scripts.run_research_governance_pipeline as cli
+
+    candidate_config = tmp_path / "research_candidates.yaml"
+    candidate_config.write_text(
+        """
+research:
+  candidates:
+    - name: baseline_trend
+      strategy_id: trend_momentum
+      description: baseline
+      overrides: {}
+    - name: fast_turn
+      strategy_id: risk_adjusted_momentum
+      description: fast
+      overrides:
+        strategy_params:
+          rebalance_frequency: biweekly
+          hold_count: 2
+""".strip(),
+        encoding="utf-8",
+    )
+
+    calls: dict[str, object] = {}
+
+    def fake_run_research_governance_pipeline(**kwargs):
+        calls.update(kwargs)
+        return {
+            "research_result": {"report_paths": {}},
+            "summary_result": {"output_paths": {}},
+            "cycle_result": SimpleNamespace(
+                decision=SimpleNamespace(id=90, review_status="ready", blocked_reasons=[])
+            ),
+            "pipeline_summary_path": "reports/governance/pipeline/2026-03-24.json",
+            "exit_code": 0,
+        }
+
+    monkeypatch.setattr(cli, "run_research_governance_pipeline", fake_run_research_governance_pipeline)
+
+    exit_code = cli.main(
+        [
+            "--start-date",
+            "2025-12-01",
+            "--end-date",
+            "2026-03-24",
+            "--candidate-config",
+            str(candidate_config),
+            "--initial-capital",
+            "123456.78",
+            "--fee-rate",
+            "0.0025",
+            "--log-level",
+            "DEBUG",
+        ]
+    )
+
+    assert exit_code == 0
+    assert calls["candidate_specs"] == [
+        {
+            "name": "baseline_trend",
+            "strategy_id": "trend_momentum",
+            "description": "baseline",
+            "overrides": {},
+        },
+        {
+            "name": "fast_turn",
+            "strategy_id": "risk_adjusted_momentum",
+            "description": "fast",
+            "overrides": {
+                "strategy_params": {
+                    "rebalance_frequency": "biweekly",
+                    "hold_count": 2,
+                }
+            },
+        },
+    ]
+    assert calls["initial_capital"] == pytest.approx(123456.78)
+    assert calls["fee_rate"] == pytest.approx(0.0025)
+    assert calls["log_level"] == "DEBUG"
