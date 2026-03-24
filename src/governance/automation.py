@@ -11,6 +11,7 @@ from typing import Any
 
 from src.core.config import ConfigLoader
 from src.core.config import GovernanceConfig
+from src.core.config import GovernanceRegimeGateConfig
 from src.governance.evaluator import evaluate_governance
 from src.governance.models import GovernanceDecision
 from src.governance.regime_gate import evaluate_regime_gate
@@ -137,13 +138,22 @@ def _resolve_regime_snapshot_or_uncertain(
     )
 
 
-def _regime_gate_evidence(regime_gate_result: Any) -> dict[str, Any]:
+def _regime_gate_evidence(
+    regime_gate_result: Any,
+    selected_strategy_id: str,
+    gate_config: GovernanceRegimeGateConfig,
+) -> dict[str, Any]:
     evidence = asdict(regime_gate_result)
     current_regime = evidence.get("current_regime")
     if isinstance(current_regime, dict):
         trade_date = current_regime.get("trade_date")
         if isinstance(trade_date, date):
             current_regime["trade_date"] = trade_date.isoformat()
+    evidence["selected_strategy_id"] = selected_strategy_id
+    evidence["sample_thresholds"] = {
+        "min_appearances": gate_config.min_appearances,
+        "min_avg_observation_count": gate_config.min_avg_observation_count,
+    }
     return evidence
 
 
@@ -179,7 +189,11 @@ def run_governance_cycle(
     )
     evidence = {
         **result.decision.evidence,
-        "regime_gate": _regime_gate_evidence(regime_gate_result),
+        "regime_gate": _regime_gate_evidence(
+            regime_gate_result=regime_gate_result,
+            selected_strategy_id=result.decision.selected_strategy_id,
+            gate_config=policy.automation.regime_gate,
+        ),
     }
     if (
         regime_gate_result.gate_status == "blocked"

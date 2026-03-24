@@ -288,6 +288,9 @@ def test_run_governance_cycle_blocks_selected_strategy_on_regime_mismatch(tmp_pa
         assert result.decision.review_status == "blocked"
         assert "SELECTED_STRATEGY_REGIME_MISMATCH" in result.decision.blocked_reasons
         assert result.decision.evidence["regime_gate"]["gate_status"] == "blocked"
+        assert result.decision.evidence["regime_gate"]["selected_strategy_id"] == "risk_adjusted_momentum"
+        assert result.decision.evidence["regime_gate"]["sample_thresholds"]["min_appearances"] == 2
+        assert result.decision.evidence["regime_gate"]["sample_thresholds"]["min_avg_observation_count"] == 20
     finally:
         repo.close()
 
@@ -315,6 +318,9 @@ def test_run_governance_cycle_skipped_regime_gate_records_evidence_without_block
         assert "SELECTED_STRATEGY_REGIME_MISMATCH" not in result.decision.blocked_reasons
         assert result.decision.evidence["regime_gate"]["gate_status"] == "skipped"
         assert result.decision.evidence["regime_gate"]["skip_reason"] == "CURRENT_REGIME_UNCERTAIN"
+        assert result.decision.evidence["regime_gate"]["selected_strategy_id"] == "risk_adjusted_momentum"
+        assert result.decision.evidence["regime_gate"]["sample_thresholds"]["min_appearances"] == 2
+        assert result.decision.evidence["regime_gate"]["sample_thresholds"]["min_avg_observation_count"] == 20
     finally:
         repo.close()
 
