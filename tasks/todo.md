@@ -108,6 +108,19 @@
 - ✅ 已完成：Phase 2 Agent 协作层
 - ✅ 已完成：Phase 3 执行与风控层
 
+## 2026-03-24 Phase 5 治理状态门禁规划
+
+- [x] 完成 Phase 5 设计 spec
+- [x] 完成 Phase 5 implementation plan
+- [ ] 按计划开始实现配置与 evidence 持久化
+- [ ] 按计划实现 `regime gate` 判定与实时状态重算
+- [ ] 按计划完成治理自动化集成与聚焦回归
+
+### 规划产物
+
+- Spec: `docs/superpowers/specs/2026-03-24-phase-five-regime-aware-governance-gate-design.md`
+- Plan: `docs/superpowers/plans/2026-03-24-phase-five-regime-aware-governance-gate-implementation.md`
+
 ## 下一步行动
 
 1. 补充端到端脚本，把 Agent 输出接入日报/研究流
