@@ -73,10 +73,39 @@ def _write_workflow_summary(payload: dict[str, Any]) -> Path:
     summary_path = Path("reports/workflow/end_to_end_workflow_summary.json")
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, default=str),
+        json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return summary_path
+
+
+def _research_governance_payload(pipeline_result: dict[str, Any]) -> dict[str, Any]:
+    cycle_result = pipeline_result.get("cycle_result")
+    decision = getattr(cycle_result, "decision", None)
+    research_report = (
+        pipeline_result.get("research_result", {})
+        .get("report_paths", {})
+        .get("json")
+    )
+    summary_json = (
+        pipeline_result.get("summary_result", {})
+        .get("output_paths", {})
+        .get("json")
+    )
+    blocked_reasons = getattr(decision, "blocked_reasons", [])
+    if blocked_reasons is None:
+        blocked_reasons = []
+    if not isinstance(blocked_reasons, list):
+        blocked_reasons = [blocked_reasons]
+    return {
+        "research_report": research_report,
+        "summary_json": summary_json,
+        "decision_id": getattr(decision, "id", None),
+        "review_status": getattr(decision, "review_status", None),
+        "blocked_reasons": blocked_reasons,
+        "pipeline_summary": pipeline_result.get("pipeline_summary_path"),
+        "exit_code": int(pipeline_result.get("exit_code", 0)),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     exit_code = int(pipeline_result.get("exit_code", 0))
     summary_payload = {
         "daily_result": {"executed": False, "artifacts": {}},
-        "research_governance_result": pipeline_result,
+        "research_governance_result": _research_governance_payload(pipeline_result),
         "health_check_result": {
             "executed": True,
             "report_path": health_report_path,
