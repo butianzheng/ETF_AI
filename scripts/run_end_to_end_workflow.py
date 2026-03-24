@@ -188,7 +188,13 @@ def main(argv: list[str] | None = None) -> int:
                     .get("json", "reports/research/summary/research_summary.json")
                 ),
             )
+            health_check_result = {
+                "executed": True,
+                "report_path": None,
+                **_health_payload(health_result),
+            }
             health_report_path = _write_health_report(health_result)
+            health_check_result["report_path"] = health_report_path
         except Exception as error:
             _write_workflow_summary(
                 _failed_summary_payload(
@@ -203,12 +209,6 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     finally:
         repo.close()
-
-    health_check_result = {
-        "executed": True,
-        "report_path": health_report_path,
-        **_health_payload(health_result),
-    }
 
     if args.publish and blocked:
         publish_result["publish_blocked_reason"] = "governance_review_status_blocked"

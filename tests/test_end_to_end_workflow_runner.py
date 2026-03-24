@@ -166,7 +166,7 @@ def test_workflow_runner_blocked_fail_on_blocked_returns_two(tmp_path, monkeypat
     import scripts.run_end_to_end_workflow as cli
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(cli, "run_research_governance_pipeline", lambda **kwargs: _blocked_pipeline_result(exit_code=2))
+    monkeypatch.setattr(cli, "run_research_governance_pipeline", lambda **kwargs: _blocked_pipeline_result(exit_code=0))
     monkeypatch.setattr(
         cli,
         "check_governance_health",
@@ -185,6 +185,9 @@ def test_workflow_runner_blocked_fail_on_blocked_returns_two(tmp_path, monkeypat
     )
 
     assert exit_code == 2
+    summary_path = tmp_path / "reports" / "workflow" / "end_to_end_workflow_summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["exit_code"] == 2
 
 
 def test_workflow_runner_failed_summary_for_research_governance_fatal(tmp_path, monkeypatch):
@@ -236,6 +239,40 @@ def test_workflow_runner_health_fatal_overrides_blocked_exit_code(tmp_path, monk
     assert payload["status"] == "failed"
     assert payload["failed_step"] == "health_check"
     assert payload["error"]["message"] == "health check crashed"
+
+
+def test_workflow_runner_health_report_write_fatal_keeps_computed_health_payload(tmp_path, monkeypatch):
+    import scripts.run_end_to_end_workflow as cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "run_research_governance_pipeline", lambda **kwargs: _stub_pipeline_result())
+    monkeypatch.setattr(
+        cli,
+        "check_governance_health",
+        lambda **kwargs: SimpleNamespace(
+            incidents=[{"incident_type": "RISK_BREACH", "severity": "critical"}],
+            rollback_recommendation={"id": 99, "review_status": "ready"},
+        ),
+    )
+
+    def _raise_on_write(_result):
+        raise RuntimeError("health report write failed")
+
+    monkeypatch.setattr(cli, "_write_health_report", _raise_on_write)
+
+    exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24"])
+
+    assert exit_code == 1
+    summary_path = tmp_path / "reports" / "workflow" / "end_to_end_workflow_summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["failed_step"] == "health_check"
+    assert payload["error"]["message"] == "health report write failed"
+    assert payload["health_check_result"]["executed"] is True
+    assert payload["health_check_result"]["incidents"] == [
+        {"incident_type": "RISK_BREACH", "severity": "critical"}
+    ]
+    assert payload["health_check_result"]["rollback_recommendation"] == {"id": 99, "review_status": "ready"}
 
 
 def test_workflow_runner_blocked_publish_is_skipped_with_reason(tmp_path, monkeypatch):
