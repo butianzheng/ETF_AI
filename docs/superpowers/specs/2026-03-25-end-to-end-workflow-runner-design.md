@@ -200,12 +200,33 @@
 - 仍应输出本次运行 summary
 - 默认不自动 publish
 
+若用户显式传了 `--publish --approved-by <name>`，且本次治理结果为 `blocked`：
+
+- 必须禁止 publish
+- 必须保留并输出 `research-governance` 与 `health check` 结果
+- `publish_result.executed` 必须为 `false`
+- summary 中必须明确记录：
+  - `publish_blocked_reason = "governance_review_status_blocked"`
+- 最终退出码：
+  - 启用 `--fail-on-blocked` 时返回 `2`
+  - 未启用时返回 `0`
+
 ### 10.2 fatal
 
-当 research-governance 或后续编排阶段出现 fatal：
+当 research-governance、health check 或 publish 后 health check 阶段出现 fatal：
 
 - 脚本整体返回 `1`
 - summary 中应清晰记录失败阶段与错误
+
+退出码优先级固定为：
+
+- `1`（fatal）高于 `2`（blocked + fail-on-blocked）
+- `2` 高于 `0`
+
+也就是说：
+
+- 若 research-governance 已经是 `blocked` 且原本应返回 `2`，但随后 health check / publish 阶段 fatal，最终退出码仍必须提升为 `1`
+- health check 自身异常视为 fatal，而不是保留 `2`
 
 ## 11. 输出设计
 
@@ -242,6 +263,32 @@
 - 同时保留适合终端阅读的简洁 stdout
 - 若测试/自动化需要，summary 应易于断言
 
+summary 交付形态固定为：
+
+- 写盘到：
+  - `reports/workflow/end_to_end_workflow_summary.json`
+- 同时 stdout 打印关键摘要行
+- `main(argv)` 返回退出码 `int`，不直接返回 summary dict
+
+fatal 场景下仍必须尽力输出 summary 文件，至少包含：
+
+```json
+{
+  "status": "failed",
+  "failed_step": "research_governance|health_check|publish|post_publish_health_check",
+  "error": {
+    "type": "RuntimeError",
+    "message": "..."
+  },
+  "exit_code": 1
+}
+```
+
+也就是说：
+
+- 除非失败发生在 summary 自身写盘阶段，否则 fatal 场景仍应产出可断言的 summary artifact
+- 独立测试文件以该 summary JSON 为主断言目标，stdout 只做关键契约断言
+
 ## 12. 文件边界
 
 ### Create
@@ -277,8 +324,12 @@
    - publish 后自动再跑一次 health check
 5. blocked path
    - 启用 `--fail-on-blocked` 时返回 `2`
+   - 即使显式传 `--publish`，也必须禁止发布
 6. fatal path
    - research/governance fatal 时返回 `1`
+7. health check fatal path
+   - 返回 `1`
+   - summary 中记录 `failed_step`
 
 约束：
 
