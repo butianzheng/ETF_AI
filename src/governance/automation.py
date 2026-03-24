@@ -1,6 +1,7 @@
 """治理自动 review cycle。"""
 from __future__ import annotations
 
+from dataclasses import asdict
 from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
@@ -8,9 +9,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+from src.core.config import ConfigLoader
 from src.core.config import GovernanceConfig
 from src.governance.evaluator import evaluate_governance
 from src.governance.models import GovernanceDecision
+from src.governance.regime_gate import evaluate_regime_gate
+from src.governance.regime_gate import resolve_current_regime
+from src.research.regime import RegimeSnapshot
 from src.storage.repositories import GovernanceRepository
 
 
@@ -110,11 +115,44 @@ def _collect_blocked_reasons(
     return reasons
 
 
+def _resolve_regime_snapshot_or_uncertain(
+    current_regime_snapshot: RegimeSnapshot | None,
+) -> RegimeSnapshot:
+    if current_regime_snapshot is not None:
+        return current_regime_snapshot
+
+    resolved = resolve_current_regime(
+        as_of_date=date.today(),
+        regime_config=ConfigLoader().load_research_config().regime,
+    )
+    if resolved is not None:
+        return resolved
+
+    return RegimeSnapshot(
+        trade_date=date.today(),
+        regime_label="neutral",
+        regime_score=0.0,
+        reason_codes=["INSUFFICIENT_POOL_COVERAGE"],
+        metrics_snapshot={"coverage": 0},
+    )
+
+
+def _regime_gate_evidence(regime_gate_result: Any) -> dict[str, Any]:
+    evidence = asdict(regime_gate_result)
+    current_regime = evidence.get("current_regime")
+    if isinstance(current_regime, dict):
+        trade_date = current_regime.get("trade_date")
+        if isinstance(trade_date, date):
+            current_regime["trade_date"] = trade_date.isoformat()
+    return evidence
+
+
 def run_governance_cycle(
     summary_path: str | Path,
     repo: GovernanceRepository,
     policy: GovernanceConfig,
     current_strategy_id: str | None,
+    current_regime_snapshot: RegimeSnapshot | None = None,
 ) -> GovernanceCycleResult:
     summary = _load_summary(summary_path)
     result = create_or_update_governance_draft(
@@ -133,11 +171,28 @@ def run_governance_cycle(
         repo=repo,
         policy=policy,
     )
+    regime_gate_result = evaluate_regime_gate(
+        summary=summary,
+        selected_strategy_id=result.decision.selected_strategy_id,
+        current_regime_snapshot=_resolve_regime_snapshot_or_uncertain(current_regime_snapshot),
+        gate_config=policy.automation.regime_gate,
+    )
+    evidence = {
+        **result.decision.evidence,
+        "regime_gate": _regime_gate_evidence(regime_gate_result),
+    }
+    if (
+        regime_gate_result.gate_status == "blocked"
+        and "SELECTED_STRATEGY_REGIME_MISMATCH" not in blocked_reasons
+    ):
+        blocked_reasons.append("SELECTED_STRATEGY_REGIME_MISMATCH")
+
     review_status = "blocked" if blocked_reasons else "ready"
     reviewed = repo.set_review_status(
         result.decision.id,
         review_status=review_status,
         blocked_reasons=blocked_reasons,
+        evidence=evidence,
     )
     return GovernanceCycleResult(
         decision=reviewed,
