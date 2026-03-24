@@ -108,6 +108,9 @@ python scripts/build_report_portal.py
 ### 10. 治理自动化、发布与回退
 
 ```bash
+python scripts/run_research_governance_pipeline.py --start-date 2025-12-01 --end-date 2026-03-24
+python scripts/run_research_governance_pipeline.py --start-date 2025-12-01 --end-date 2026-03-24 --fail-on-blocked
+
 python scripts/run_research.py --start-date 2025-12-01 --end-date 2026-03-11
 python scripts/summarize_research_reports.py
 python scripts/run_governance_cycle.py --summary reports/research/summary/research_summary.json
@@ -118,6 +121,8 @@ python scripts/rollback_governance_decision.py --approved-by your_name --reason 
 ```
 
 说明：
+- 推荐优先使用 `run_research_governance_pipeline.py` 一次串联研究、汇总、governance cycle 与门户刷新
+- `--fail-on-blocked` 会在出现 blocked/fatal error 时以非零码退出，方便 CI 门禁
 - 推荐顺序是：研究 -> 汇总 -> governance cycle -> 人工确认 publish -> health check
 - `run_governance_cycle.py` 会复用治理评估逻辑，生成/去重 draft，并给出 `ready/blocked` review 状态
 - `run_governance_review.py` 会根据研究汇总结果生成治理 draft，并写入 `reports/governance/`

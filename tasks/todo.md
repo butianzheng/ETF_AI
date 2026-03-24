@@ -131,6 +131,30 @@
 - Task 4 code quality review：已通过
 - 聚焦回归：`pytest tests/test_governance_repository.py tests/test_governance_regime_gate.py tests/test_governance_automation.py tests/test_governance_runtime.py -q` 通过（`35 passed`）
 
+## 2026-03-24 Research-To-Governance 统一编排
+
+### 执行清单（立项）
+- [ ] 统一编排服务
+- [ ] blocked / fatal error 语义
+- [ ] 统一编排 CLI
+- [ ] 文档与验证
+
+### 当前状态（已完成）
+- [x] 统一编排服务
+- [x] blocked / fatal error 语义
+- [x] 统一编排 CLI
+- [x] 文档与验证
+
+### Task 1/2/3/4 完成与审查
+- Task 1（统一编排服务）完成：`a5955a6`、`be381bf`、`23c485e`
+- Task 2（blocked / fatal error 语义）完成：`1e7bf20`、`c85b5a9`、`f5bfc22`
+- Task 3（统一编排 CLI）完成：`825fe92`、`436769f`
+- Task 4（文档与任务跟踪）完成：本次提交
+- 审查状态：Task 1/2/3 代码审查通过；Task 4 文档一致性与路径准确性自审通过
+
+### 验证结果
+- 聚焦回归：`pytest tests/test_research_governance_pipeline.py tests/test_governance_automation.py -q` 通过（`24 passed in 1.09s`）
+
 ## 下一步行动
 
 1. 补充端到端脚本，把 Agent 输出接入日报/研究流
