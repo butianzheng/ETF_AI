@@ -392,3 +392,60 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_two_with_fail_fl
     review_payload = json.loads(Path("reports/governance/2026-03-24.json").read_text(encoding="utf-8"))
     assert review_payload["review_status"] == "blocked"
     assert review_payload["blocked_reasons"] == ["SELECTED_STRATEGY_REGIME_MISMATCH"]
+
+
+def test_research_governance_pipeline_cli_smoke_fatal_summary_writes_partial_pipeline_summary(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    import scripts.run_research_governance_pipeline as cli
+    import src.governance_pipeline as pipeline
+
+    class FakeDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 3, 24)
+
+    candidate_config = _write_candidate_config(tmp_path / "research_candidates.yaml")
+    _install_smoke_env(
+        tmp_path,
+        monkeypatch,
+        pipeline,
+        FakeDate,
+        review_status="ready",
+        blocked_reasons=[],
+        summary_hash="summary-hash-smoke-fatal",
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "aggregate_research_reports",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("summary smoke fatal")),
+    )
+
+    exit_code = cli.main(
+        [
+            "--start-date",
+            "2025-12-01",
+            "--end-date",
+            "2026-03-24",
+            "--candidate-config",
+            str(candidate_config),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "fatal_error=RuntimeError: summary smoke fatal" in captured.err
+
+    pipeline_summary_path = tmp_path / "reports" / "governance" / "pipeline" / "2026-03-24.json"
+    assert pipeline_summary_path.exists()
+    payload = json.loads(pipeline_summary_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "failed"
+    assert payload["failed_step"] == "summary"
+    assert payload["error"]["type"] == "RuntimeError"
+    assert payload["error"]["message"] == "summary smoke fatal"
+
+    assert not (tmp_path / "reports" / "governance" / "cycle" / "2026-03-24.json").exists()
+    assert not (tmp_path / "reports" / "governance" / "2026-03-24.json").exists()
+    assert not (tmp_path / "reports" / "portal_summary.json").exists()
