@@ -68,6 +68,11 @@ research:
     return path
 
 
+def _install_smoke_env(tmp_path: Path, monkeypatch, pipeline_module, fake_date_cls) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline_module, "date", fake_date_cls)
+
+
 def test_research_governance_pipeline_cli_smoke_happy_path(tmp_path, monkeypatch, capsys):
     import scripts.run_research_governance_pipeline as cli
     import src.governance_pipeline as pipeline
@@ -87,8 +92,7 @@ def test_research_governance_pipeline_cli_smoke_happy_path(tmp_path, monkeypatch
 
     candidate_config = _write_candidate_config(tmp_path / "research_candidates.yaml")
 
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(pipeline, "date", FakeDate)
+    _install_smoke_env(tmp_path, monkeypatch, pipeline, FakeDate)
     monkeypatch.setattr(
         pipeline,
         "run_research_pipeline",
@@ -251,6 +255,7 @@ def fake_run_governance_cycle(**kwargs):
 - `happy path` 默认走真实 `aggregate_research_reports()`
 - `happy path` 默认走真实 `build_report_portal()`
 - 用 `tests/conftest.py` 提供的临时 SQLite 支撑真实 portal governance summary 读取
+- `_install_smoke_env(...)` 必须作为所有 smoke 场景的共同前置
 
 - [ ] **Step 4: 回跑 happy path smoke，确认 CLI + service + artifact 闭合**
 
@@ -259,6 +264,9 @@ Run: `pytest tests/test_research_governance_pipeline_cli_smoke.py::test_research
 Expected:
 - PASS
 - 同时断言：
+  - `reports/research/2026-03-24.json` 存在
+  - `reports/research/2026-03-24.md` 存在
+  - `reports/research/2026-03-24.csv` 存在
   - `reports/research/summary/research_summary.json` 存在
   - `reports/governance/cycle/2026-03-24.json` 存在
   - `reports/governance/2026-03-24.json` 存在
@@ -284,6 +292,7 @@ git commit -m "test: add happy path governance cli smoke"
 
 ```python
 def test_research_governance_pipeline_cli_smoke_blocked_returns_zero_by_default(...):
+    _install_smoke_env(tmp_path, monkeypatch, pipeline, FakeDate)
     exit_code = cli.main(
         [
             "--start-date",
@@ -302,6 +311,7 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_zero_by_default(
 
 
 def test_research_governance_pipeline_cli_smoke_blocked_returns_two_with_fail_flag(...):
+    _install_smoke_env(tmp_path, monkeypatch, pipeline, FakeDate)
     exit_code = cli.main(
         [
             "--start-date",
@@ -315,9 +325,13 @@ def test_research_governance_pipeline_cli_smoke_blocked_returns_two_with_fail_fl
     )
 
     assert exit_code == 2
+    assert Path("reports/research/2026-03-24.json").exists()
+    assert Path("reports/research/2026-03-24.md").exists()
+    assert Path("reports/research/2026-03-24.csv").exists()
     assert Path("reports/governance/cycle/2026-03-24.json").exists()
     assert Path("reports/governance/2026-03-24.json").exists()
     assert Path("reports/governance/pipeline/2026-03-24.json").exists()
+    assert Path("reports/portal_summary.json").exists()
 ```
 
 - [ ] **Step 2: 跑测试确认当前 smoke helper 还不支持 blocked 分支**
@@ -368,7 +382,10 @@ def _install_governance_cycle_stub(
 - default blocked smoke 不传 `--fail-on-blocked`，退出码必须是 `0`
 - fail-flag blocked smoke 传 `--fail-on-blocked`，退出码必须是 `2`
 - 两个 smoke 都必须证明：
+  - 复用 `_install_smoke_env(...)`，固定 run_date 与 `tmp_path`
+  - research 三件套没有因为 `blocked` 被跳过
   - artifact 没有因为 `blocked` 被短路
+  - `reports/portal_summary.json` 仍然存在
   - `pipeline summary.final_decision.blocked_reasons` 正确
 
 - [ ] **Step 4: 回跑 blocked smoke，确认两种退出码都闭合**
