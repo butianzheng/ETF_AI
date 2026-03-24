@@ -105,18 +105,26 @@ python scripts/build_report_portal.py
 - 运行 `scripts/daily_run.py` 后会自动刷新统一门户
 - 运行 `scripts/run_research.py` 或 `scripts/summarize_research_reports.py` 后也会自动刷新统一门户
 
-### 10. 治理评审、发布与回退
+### 10. 治理自动化、发布与回退
 
 ```bash
+python scripts/run_research.py --start-date 2025-12-01 --end-date 2026-03-11
+python scripts/summarize_research_reports.py
+python scripts/run_governance_cycle.py --summary reports/research/summary/research_summary.json
 python scripts/run_governance_review.py --summary reports/research/summary/research_summary.json
 python scripts/publish_governance_decision.py --decision-id 1 --approved-by your_name
+python scripts/check_governance_health.py --report-dir reports/daily
 python scripts/rollback_governance_decision.py --approved-by your_name --reason "manual rollback"
 ```
 
 说明：
+- 推荐顺序是：研究 -> 汇总 -> governance cycle -> 人工确认 publish -> health check
+- `run_governance_cycle.py` 会复用治理评估逻辑，生成/去重 draft，并给出 `ready/blocked` review 状态
 - `run_governance_review.py` 会根据研究汇总结果生成治理 draft，并写入 `reports/governance/`
 - `publish_governance_decision.py` 会把指定 draft 审批并发布到生产运行时
+- `check_governance_health.py` 会扫描日报与已发布策略，输出 incident 和 rollback recommendation
 - `rollback_governance_decision.py` 会把生产策略回退到上一稳定策略或 fallback
+- 单一 ETF 实盘场景下默认不启用自动 publish，最终切换仍保留人工门禁
 
 ## 项目结构
 

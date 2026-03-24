@@ -10,6 +10,10 @@ from typing import Any, Dict, List
 
 from src.research_summary import aggregate_research_reports
 from src.storage.repositories import GovernanceRepository
+from src.storage.repositories import _to_governance_decision
+from src.storage.repositories import _to_governance_incident
+from src.storage.models import GovernanceDecisionRecord
+from src.storage.models import GovernanceIncidentRecord
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -75,12 +79,54 @@ def collect_governance_summary() -> Dict[str, Any]:
     try:
         latest_decision = repo.get_latest()
         latest_published = repo.get_latest_published()
+        latest_draft_record = (
+            repo.session.query(GovernanceDecisionRecord)
+            .filter(GovernanceDecisionRecord.status == "draft")
+            .order_by(GovernanceDecisionRecord.id.desc())
+            .first()
+        )
+        latest_rollback_recommendation_record = (
+            repo.session.query(GovernanceDecisionRecord)
+            .filter(
+                GovernanceDecisionRecord.status == "draft",
+                GovernanceDecisionRecord.decision_type == "fallback",
+            )
+            .order_by(GovernanceDecisionRecord.id.desc())
+            .first()
+        )
+        open_incident_records = (
+            repo.session.query(GovernanceIncidentRecord)
+            .filter(GovernanceIncidentRecord.status == "open")
+            .order_by(GovernanceIncidentRecord.id.desc())
+            .all()
+        )
     finally:
         repo.close()
 
+    latest_draft = _to_governance_decision(latest_draft_record) if latest_draft_record else None
+    latest_rollback_recommendation = (
+        _to_governance_decision(latest_rollback_recommendation_record)
+        if latest_rollback_recommendation_record
+        else None
+    )
+    open_incidents = [_to_governance_incident(record) for record in open_incident_records]
+    severity_rank = {"info": 0, "warning": 1, "critical": 2}
+    highest_open_incident_severity = None
+    if open_incidents:
+        highest_open_incident_severity = max(open_incidents, key=lambda item: severity_rank[item.severity]).severity
+
     return {
         "latest_decision": latest_decision.model_dump(mode="json") if latest_decision else None,
+        "latest_draft": latest_draft.model_dump(mode="json") if latest_draft else None,
         "latest_published": latest_published.model_dump(mode="json") if latest_published else None,
+        "latest_rollback_recommendation": (
+            latest_rollback_recommendation.model_dump(mode="json")
+            if latest_rollback_recommendation
+            else None
+        ),
+        "open_incidents": [item.model_dump(mode="json") for item in open_incidents],
+        "open_incident_count": len(open_incidents),
+        "highest_open_incident_severity": highest_open_incident_severity,
     }
 
 
@@ -94,7 +140,11 @@ def _build_portal_html(
     research_reports = research_summary.get("report_summaries", [])
     candidate_leaderboard = research_summary.get("candidate_leaderboard", [])
     latest_governance = governance_summary.get("latest_decision")
+    latest_draft = governance_summary.get("latest_draft")
     latest_published = governance_summary.get("latest_published")
+    latest_rollback_recommendation = governance_summary.get("latest_rollback_recommendation")
+    open_incident_count = governance_summary.get("open_incident_count", 0)
+    highest_open_incident_severity = governance_summary.get("highest_open_incident_severity")
     latest_research = research_reports[-1] if research_reports else None
     leader = candidate_leaderboard[0] if candidate_leaderboard else None
     research_index_href = "research/summary/index.html" if research_reports else "#"
@@ -354,6 +404,18 @@ def _build_portal_html(
           <strong>当前已发布策略</strong>
           <span>{published_strategy_note}</span>
         </div>
+        <div class="link-card">
+          <strong>最新 Draft Review</strong>
+          <span>{draft_review_note}</span>
+        </div>
+        <div class="link-card">
+          <strong>Health Incidents</strong>
+          <span>{incident_status_note}</span>
+        </div>
+        <div class="link-card">
+          <strong>Rollback Recommendation</strong>
+          <span>{rollback_recommendation_note}</span>
+        </div>
       </div>
     </section>
 
@@ -435,6 +497,27 @@ def _build_portal_html(
             f"published={escape(latest_published['selected_strategy_id'])}"
             if latest_published
             else "暂无已发布策略"
+        ),
+        draft_review_note=(
+            "review_status={review_status}，blocked_reasons={blocked_reasons}".format(
+                review_status=escape(latest_draft["review_status"]),
+                blocked_reasons=escape(",".join(latest_draft.get("blocked_reasons") or []) or "[]"),
+            )
+            if latest_draft
+            else "暂无 draft"
+        ),
+        incident_status_note=(
+            f"open incidents={open_incident_count}，highest={escape(highest_open_incident_severity or '-')}"
+            if open_incident_count
+            else "open incidents=0"
+        ),
+        rollback_recommendation_note=(
+            "selected={selected}，review_status={review_status}".format(
+                selected=escape(latest_rollback_recommendation["selected_strategy_id"]),
+                review_status=escape(latest_rollback_recommendation["review_status"]),
+            )
+            if latest_rollback_recommendation
+            else "暂无 rollback recommendation"
         ),
         daily_rows="\n".join(daily_rows_html) if daily_rows_html else '<tr><td colspan="8">暂无日报</td></tr>',
         research_rows="\n".join(research_rows_html) if research_rows_html else '<tr><td colspan="6">暂无研究报告</td></tr>',

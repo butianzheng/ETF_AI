@@ -1,6 +1,8 @@
 import json
+from datetime import date
 from pathlib import Path
 
+from src.governance.models import GovernanceIncident
 from src.governance.models import GovernanceDecision
 from src.report_portal import build_report_portal, collect_daily_report_summaries
 from src.storage.repositories import GovernanceRepository
@@ -100,16 +102,40 @@ def test_build_report_portal(tmp_path):
     try:
         draft = repo.save_draft(
             GovernanceDecision(
-                decision_date=__import__("datetime").date(2026, 3, 24),
+                decision_date=date(2026, 3, 24),
                 current_strategy_id="trend_momentum",
                 selected_strategy_id="risk_adjusted_momentum",
                 previous_strategy_id="trend_momentum",
                 fallback_strategy_id="trend_momentum",
                 decision_type="switch",
+                review_status="ready",
             )
         )
         repo.approve(draft.id, approved_by="tester")
         repo.publish(draft.id)
+
+        repo.save_draft(
+            GovernanceDecision(
+                decision_date=date(2026, 3, 24),
+                current_strategy_id="risk_adjusted_momentum",
+                selected_strategy_id="trend_momentum",
+                previous_strategy_id="risk_adjusted_momentum",
+                fallback_strategy_id="trend_momentum",
+                decision_type="fallback",
+                review_status="blocked",
+                blocked_reasons=["OPEN_CRITICAL_INCIDENT"],
+                reason_codes=["HEALTH_CHECK_RECOMMENDS_ROLLBACK"],
+            )
+        )
+        repo.save_incident(
+            GovernanceIncident(
+                incident_date=date(2026, 3, 24),
+                incident_type="RISK_BREACH",
+                severity="critical",
+                strategy_id="risk_adjusted_momentum",
+                reason_codes=["RISK_BREACH_STREAK"],
+            )
+        )
     finally:
         repo.close()
 
@@ -118,6 +144,10 @@ def test_build_report_portal(tmp_path):
     assert Path(result["output_paths"]["html"]).exists()
     assert Path(result["output_paths"]["json"]).exists()
     assert result["governance_summary"]["latest_published"]["selected_strategy_id"] == "risk_adjusted_momentum"
+    assert result["governance_summary"]["latest_draft"]["review_status"] == "blocked"
+    assert result["governance_summary"]["open_incident_count"] == 1
+    assert result["governance_summary"]["highest_open_incident_severity"] == "critical"
+    assert result["governance_summary"]["latest_rollback_recommendation"]["selected_strategy_id"] == "trend_momentum"
     html = Path(result["output_paths"]["html"]).read_text(encoding="utf-8")
     assert "日报与研究统一门户" in html
     assert "研究历史总览" in html
@@ -125,3 +155,7 @@ def test_build_report_portal(tmp_path):
     assert "trend_momentum" in html
     assert "治理决策" in html
     assert "published" in html
+    assert "review_status" in html
+    assert "blocked" in html
+    assert "open incidents" in html
+    assert "OPEN_CRITICAL_INCIDENT" in html

@@ -524,3 +524,72 @@
 - `pytest -q tests/test_report_portal.py` 通过，`2 passed`
 - `pytest -q` 通过，`62 passed in 1.63s`
 - `python3 -m compileall src scripts tests` 通过
+
+## 2026-03-24 第三阶段治理自动化增强计划
+
+### 计划
+- [x] 明确第三阶段范围为“半自动治理编排”，默认保留人工最终发布门禁
+- [x] 输出第三阶段实施计划文档
+- [x] 同步 `tasks/todo.md` 记录后续执行入口
+
+### 结果
+- 已新增第三阶段 plan：
+  `docs/superpowers/plans/2026-03-24-governance-automation-enhancement-phase-three.md`
+- 本轮计划聚焦四块：
+  - 自动 review cycle 与去重
+  - 发布前门禁与 blocked/ready 状态
+  - 健康巡检、incident 与 rollback recommendation
+  - 门户与运维手册升级
+
+### 下一步执行建议
+- [x] 完成 Task 1，补齐 `governance.automation` 配置、review 状态和 incident 持久化
+- [x] 执行 Task 2，把 `run_governance_cycle.py` 接成统一自动编排入口
+- [x] 执行 Task 3，落健康巡检与 rollback recommendation
+- [x] 执行 Task 4，落门户展示与全量验证
+
+### Task 1 结果
+- 已新增 `GovernanceAutomationConfig`
+- 已为 `GovernanceDecision` 增加 `summary_hash/source_report_date/review_status/blocked_reasons`
+- 已新增 `GovernanceIncident` 与 `governance_incident` 表
+- 已扩展 `GovernanceRepository` 支持 review 状态更新、summary_hash 查询与 incident 持久化
+- 已新增轻量测试文件 `tests/test_governance_automation.py`、`tests/test_governance_health.py`
+- 已生成 Task 1 提交：`b720d64 feat: add governance automation config and audit state`
+
+### Task 1 验证
+- `pytest -q tests/test_governance_repository.py` 通过，`4 passed`
+- `pytest -q tests/test_governance_repository.py tests/test_governance_models.py tests/test_governance_automation.py tests/test_governance_health.py` 通过，`8 passed`
+- `python3 -m compileall src/core/config.py src/governance/models.py src/storage/models.py src/storage/repositories.py tests/test_governance_repository.py tests/test_governance_automation.py tests/test_governance_health.py` 通过
+
+### Task 2 结果
+- 已新增 `src/governance/automation.py`，支持 summary hash 去重、freshness/cooldown/open critical incident 门禁和 `ready/blocked` review 状态回写
+- 已新增 `scripts/run_governance_cycle.py`
+- `scripts/run_governance_review.py` 已复用自动 cycle 的 draft 生成逻辑
+- `publish_decision()` 已在自动化开启时要求 `review_status == "ready"`，自动化关闭时保持旧兼容行为
+- 已生成 Task 2 提交：`5a0a1d8 feat: add governance automation review cycle`
+
+### Task 2 验证
+- `pytest -q tests/test_governance_automation.py tests/test_governance_runtime.py` 通过，`10 passed`
+- `pytest -q tests/test_governance_repository.py tests/test_governance_automation.py tests/test_governance_runtime.py` 通过，`14 passed`
+- `python3 -m compileall src/governance/automation.py src/governance/publisher.py scripts/run_governance_review.py scripts/run_governance_cycle.py tests/test_governance_automation.py tests/test_governance_runtime.py` 通过
+
+### Task 3 结果
+- 已新增 `src/governance/health.py`，支持 `STRATEGY_DRIFT`、`RISK_BREACH`、`EXECUTION_FAILURE`、`GOVERNANCE_STALE` 巡检
+- 已新增 `scripts/check_governance_health.py`
+- health check 在 critical incident 场景下可生成 fallback draft recommendation
+- 已补 e2e：健康巡检推荐回退后，生产主流程可恢复消费 fallback 策略
+- 已生成 Task 3 提交：`9f89e8c feat: add governance health checks and rollback recommendation`
+
+### Task 3 验证
+- `pytest -q tests/test_governance_health.py tests/test_pipeline_e2e.py` 通过，`6 passed`
+- `pytest -q tests/test_governance_health.py tests/test_governance_automation.py tests/test_governance_runtime.py tests/test_pipeline_e2e.py` 通过，`16 passed`
+- `python3 -m compileall src/governance/health.py scripts/check_governance_health.py tests/test_governance_health.py tests/test_pipeline_e2e.py` 通过
+
+### Task 4 结果
+- 统一门户已展示 `latest_draft.review_status`、`blocked_reasons`、open incident 统计与最新 rollback recommendation
+- README 已补治理自动化推荐运行顺序和“默认不自动 publish”说明
+- 第三阶段 plan 已更新为完成态
+
+### Task 4 验证
+- `pytest -q tests/test_report_portal.py` 通过，`2 passed`
+- `pytest -q` 通过，`75 passed in 1.60s`
+- `python3 -m compileall src scripts tests` 通过
