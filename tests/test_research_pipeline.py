@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from scripts.run_research import _load_candidate_specs
 from src.core.config import config_loader
+from src.research_candidate_config import load_candidate_specs, parse_candidate_config_data
 from src.research_pipeline import run_research_pipeline
 from src.storage.database import init_db
 from src.storage.repositories import PriceRepository
@@ -91,7 +91,39 @@ def test_default_research_config_loaded():
     assert research_config.candidates[1].strategy_id == "risk_adjusted_momentum"
 
 
-def test_load_candidate_specs_from_yaml(tmp_path):
+def test_parse_candidate_config_data_returns_candidate_specs():
+    data = {
+        "research": {
+            "candidates": [
+                {
+                    "name": "fast_rebalance",
+                    "strategy_id": "risk_adjusted_momentum",
+                    "description": "test candidate",
+                    "overrides": {
+                        "strategy_params": {
+                            "volatility_penalty_weight": 0.8,
+                        }
+                    },
+                }
+            ]
+        }
+    }
+
+    assert parse_candidate_config_data(data) == [
+        {
+            "name": "fast_rebalance",
+            "strategy_id": "risk_adjusted_momentum",
+            "description": "test candidate",
+            "overrides": {"strategy_params": {"volatility_penalty_weight": 0.8}},
+        }
+    ]
+
+
+def test_load_candidate_specs_returns_none_without_candidate_config():
+    assert load_candidate_specs(None) is None
+
+
+def test_load_candidate_specs_reads_yaml_from_path(tmp_path):
     config_path = tmp_path / "research.yaml"
     config_path.write_text(
         """
@@ -107,7 +139,7 @@ research:
         encoding="utf-8",
     )
 
-    candidate_specs = _load_candidate_specs(str(config_path))
+    candidate_specs = load_candidate_specs(str(config_path))
 
     assert candidate_specs == [
         {
