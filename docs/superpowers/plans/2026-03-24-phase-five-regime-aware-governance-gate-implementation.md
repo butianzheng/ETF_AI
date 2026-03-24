@@ -8,6 +8,11 @@
 
 **Tech Stack:** Python 3、Pydantic、SQLAlchemy、pandas、pytest
 
+**Status (2026-03-24):** 已完成
+- Commits: `b1185a9`, `deb47d0`, `a371acc`, `3aee5a3`, `3659874`, `612c1e2`, `58c1d7d`, `c6c8ac9`
+- Review: Task 4 的 spec compliance review 与 code quality review 均已通过
+- Verify: `pytest tests/test_governance_repository.py tests/test_governance_regime_gate.py tests/test_governance_automation.py tests/test_governance_runtime.py -q` -> `35 passed`
+
 ---
 
 ## 文件边界
@@ -64,7 +69,7 @@
 - Modify: `src/storage/repositories.py`
 - Test: `tests/test_governance_repository.py`
 
-- [ ] **Step 1: 先写失败测试，锁定配置与 evidence 刷新行为**
+- [x] **Step 1: 先写失败测试，锁定配置与 evidence 刷新行为**
 
 ```python
 def test_strategy_config_loads_governance_regime_gate_policy():
@@ -87,7 +92,7 @@ def test_governance_repository_updates_review_status_and_evidence():
     assert reviewed.evidence["regime_gate"]["gate_status"] == "blocked"
 ```
 
-- [ ] **Step 2: 运行测试，确认当前代码缺少配置与 evidence 更新能力**
+- [x] **Step 2: 运行测试，确认当前代码缺少配置与 evidence 更新能力**
 
 Run: `pytest tests/test_governance_repository.py -q`
 
@@ -95,7 +100,7 @@ Expected:
 - FAIL，报错应落在 `GovernanceAutomationConfig` 缺少 `regime_gate`
 - 或 `set_review_status()` 不接受 `evidence`
 
-- [ ] **Step 3: 以最小改动补齐配置模型与仓储更新接口**
+- [x] **Step 3: 以最小改动补齐配置模型与仓储更新接口**
 
 ```python
 class GovernanceRegimeGateConfig(BaseModel):
@@ -132,14 +137,14 @@ def set_review_status(
     return _to_governance_decision(record)
 ```
 
-- [ ] **Step 4: 回跑仓储测试，确认配置与 evidence 可持久化**
+- [x] **Step 4: 回跑仓储测试，确认配置与 evidence 可持久化**
 
 Run: `pytest tests/test_governance_repository.py -q`
 
 Expected:
 - PASS
 
-- [ ] **Step 5: 提交这一层基础改动**
+- [x] **Step 5: 提交这一层基础改动**
 
 ```bash
 git add config/strategy.yaml src/core/config.py src/storage/repositories.py tests/test_governance_repository.py
@@ -152,7 +157,7 @@ git commit -m "feat: add governance regime gate config and review persistence"
 - Create: `src/governance/regime_gate.py`
 - Test: `tests/test_governance_regime_gate.py`
 
-- [ ] **Step 1: 先写失败测试，固定 `pass / blocked / skipped` 语义**
+- [x] **Step 1: 先写失败测试，固定 `pass / blocked / skipped` 语义**
 
 ```python
 def test_regime_gate_blocks_when_selected_strategy_is_in_proven_bad_regime():
@@ -191,14 +196,14 @@ def test_regime_gate_passes_when_current_regime_is_not_the_worst_state():
     assert result.blocked_reason is None
 ```
 
-- [ ] **Step 2: 运行目标测试，确保还没有门禁实现**
+- [x] **Step 2: 运行目标测试，确保还没有门禁实现**
 
 Run: `pytest tests/test_governance_regime_gate.py -q`
 
 Expected:
 - FAIL，提示 `ModuleNotFoundError` 或 `evaluate_regime_gate` 未定义
 
-- [ ] **Step 3: 编写最小门禁实现，只做 summary 解析与弱/强证据判定**
+- [x] **Step 3: 编写最小门禁实现，只做 summary 解析与弱/强证据判定**
 
 ```python
 @dataclass
@@ -225,14 +230,14 @@ def evaluate_regime_gate(summary, selected_strategy_id, current_regime_snapshot,
     return passed(current_regime_snapshot)
 ```
 
-- [ ] **Step 4: 回跑纯门禁测试，确认三态输出闭合**
+- [x] **Step 4: 回跑纯门禁测试，确认三态输出闭合**
 
 Run: `pytest tests/test_governance_regime_gate.py -q`
 
 Expected:
 - PASS
 
-- [ ] **Step 5: 提交纯判定层**
+- [x] **Step 5: 提交纯判定层**
 
 ```bash
 git add src/governance/regime_gate.py tests/test_governance_regime_gate.py
@@ -249,7 +254,7 @@ git commit -m "feat: add regime gate evaluation"
 - Reuse: `src/data/normalizer.py`
 - Reuse: `src/core/config.py`
 
-- [ ] **Step 1: 先写失败测试，锁定实时 `regime` 解析与注入 seam**
+- [x] **Step 1: 先写失败测试，锁定实时 `regime` 解析与注入 seam**
 
 ```python
 def test_resolve_current_regime_uses_injected_price_loader():
@@ -278,14 +283,14 @@ def test_evaluate_regime_gate_treats_uncertain_current_regime_as_skipped():
     assert result.skip_reason == "CURRENT_REGIME_UNCERTAIN"
 ```
 
-- [ ] **Step 2: 运行目标测试，确认当前模块还不支持实时解析 seam**
+- [x] **Step 2: 运行目标测试，确认当前模块还不支持实时解析 seam**
 
 Run: `pytest tests/test_governance_regime_gate.py -q`
 
 Expected:
 - FAIL，报错应落在 `resolve_current_regime` 未定义或签名不匹配
 
-- [ ] **Step 3: 实现默认实时重算路径，同时保留测试注入 seam**
+- [x] **Step 3: 实现默认实时重算路径，同时保留测试注入 seam**
 
 ```python
 def resolve_current_regime(
@@ -305,14 +310,14 @@ def resolve_current_regime(
 - 复用 `DataFetcher` + `DataNormalizer`
 - 不把网络依赖带进测试；测试只能走注入 loader
 
-- [ ] **Step 4: 回跑门禁测试，确认实时解析路径可测**
+- [x] **Step 4: 回跑门禁测试，确认实时解析路径可测**
 
 Run: `pytest tests/test_governance_regime_gate.py -q`
 
 Expected:
 - PASS
 
-- [ ] **Step 5: 提交实时解析层**
+- [x] **Step 5: 提交实时解析层**
 
 ```bash
 git add src/governance/regime_gate.py tests/test_governance_regime_gate.py
@@ -326,7 +331,7 @@ git commit -m "feat: resolve current regime for governance gate"
 - Modify: `tests/test_governance_automation.py`
 - Verify: `tests/test_governance_runtime.py`
 
-- [ ] **Step 1: 先写失败的自动化测试，覆盖阻断、跳过、draft 复用刷新**
+- [x] **Step 1: 先写失败的自动化测试，覆盖阻断、跳过、draft 复用刷新**
 
 ```python
 def test_run_governance_cycle_blocks_selected_strategy_on_regime_mismatch(tmp_path):
@@ -383,7 +388,7 @@ def test_run_governance_cycle_applies_gate_to_keep_and_fallback_targets(tmp_path
     assert fallback_result.decision.decision_type == "fallback"
 ```
 
-- [ ] **Step 2: 运行自动化测试，确认当前治理流程尚未接入门禁**
+- [x] **Step 2: 运行自动化测试，确认当前治理流程尚未接入门禁**
 
 Run: `pytest tests/test_governance_automation.py -q`
 
@@ -391,7 +396,7 @@ Expected:
 - FAIL，缺少 `current_regime_snapshot` 注入点
 - 或 `blocked_reasons` / `evidence["regime_gate"]` 不符合预期
 
-- [ ] **Step 3: 在自动化层接入门禁，并让复用 draft 时也刷新 evidence**
+- [x] **Step 3: 在自动化层接入门禁，并让复用 draft 时也刷新 evidence**
 
 ```python
 def run_governance_cycle(
@@ -427,7 +432,7 @@ def run_governance_cycle(
 - `gate_status == "skipped"` 时只写 evidence，不新增 `blocked_reasons`
 - 同一 `summary_hash` 二次运行时，必须刷新最新 `regime_gate` evidence
 
-- [ ] **Step 4: 回跑自动化与发布语义回归测试**
+- [x] **Step 4: 回跑自动化与发布语义回归测试**
 
 Run: `pytest tests/test_governance_automation.py tests/test_governance_runtime.py -q`
 
@@ -435,7 +440,7 @@ Expected:
 - PASS
 - `tests/test_governance_runtime.py` 不需要改断言就通过，说明发布语义未被破坏
 
-- [ ] **Step 5: 提交自动化集成层**
+- [x] **Step 5: 提交自动化集成层**
 
 ```bash
 git add src/governance/automation.py tests/test_governance_automation.py
@@ -451,7 +456,7 @@ git commit -m "feat: integrate regime gate into governance automation"
 - Verify: `tests/test_governance_automation.py`
 - Verify: `tests/test_governance_runtime.py`
 
-- [ ] **Step 1: 在 `tasks/todo.md` 中新增 Phase 5 执行清单**
+- [x] **Step 1: 在 `tasks/todo.md` 中新增 Phase 5 执行清单**
 
 ```md
 ## 2026-03-24 Phase 5 治理状态门禁
@@ -462,14 +467,14 @@ git commit -m "feat: integrate regime gate into governance automation"
 - [ ] 聚焦回归验证
 ```
 
-- [ ] **Step 2: 运行 Phase 5 相关测试集**
+- [x] **Step 2: 运行 Phase 5 相关测试集**
 
 Run: `pytest tests/test_governance_repository.py tests/test_governance_regime_gate.py tests/test_governance_automation.py tests/test_governance_runtime.py -q`
 
 Expected:
 - PASS
 
-- [ ] **Step 3: 将验证结果与 review 结论写回 `tasks/todo.md`**
+- [x] **Step 3: 将验证结果与 review 结论写回 `tasks/todo.md`**
 
 ```md
 ### 验证结果
@@ -477,14 +482,14 @@ Expected:
 - `regime gate` 在 blocked/skipped/pass 三种状态下行为符合 spec
 ```
 
-- [ ] **Step 4: 检查工作区，只保留本阶段应有文件**
+- [x] **Step 4: 检查工作区，只保留本阶段应有文件**
 
 Run: `git status --short`
 
 Expected:
 - 只出现本任务涉及文件；无意外改动
 
-- [ ] **Step 5: 提交收尾文档与跟踪更新**
+- [x] **Step 5: 提交收尾文档与跟踪更新**
 
 ```bash
 git add tasks/todo.md

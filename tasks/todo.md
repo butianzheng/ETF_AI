@@ -112,14 +112,24 @@
 
 - [x] 完成 Phase 5 设计 spec
 - [x] 完成 Phase 5 implementation plan
-- [ ] 按计划开始实现配置与 evidence 持久化
-- [ ] 按计划实现 `regime gate` 判定与实时状态重算
-- [ ] 按计划完成治理自动化集成与聚焦回归
+- [x] 按计划开始实现配置与 evidence 持久化
+- [x] 按计划实现 `regime gate` 判定与实时状态重算
+- [x] 按计划完成治理自动化集成与聚焦回归
 
 ### 规划产物
 
 - Spec: `docs/superpowers/specs/2026-03-24-phase-five-regime-aware-governance-gate-design.md`
 - Plan: `docs/superpowers/plans/2026-03-24-phase-five-regime-aware-governance-gate-implementation.md`
+
+### 完成结果
+
+- Task 1 提交：`b1185a9`、`deb47d0`
+- Task 2 提交：`a371acc`
+- Task 3 提交：`3aee5a3`
+- Task 4 提交：`3659874`、`612c1e2`、`58c1d7d`、`c6c8ac9`
+- Task 4 spec compliance review：已通过
+- Task 4 code quality review：已通过
+- 聚焦回归：`pytest tests/test_governance_repository.py tests/test_governance_regime_gate.py tests/test_governance_automation.py tests/test_governance_runtime.py -q` 通过（`35 passed`）
 
 ## 下一步行动
 
