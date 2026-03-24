@@ -155,11 +155,45 @@
 ### 验证结果
 - 聚焦回归：`pytest tests/test_research_governance_pipeline.py tests/test_governance_automation.py -q` 通过（`24 passed in 1.09s`）
 
+## 2026-03-25 Research-To-Governance CLI Smoke
+
+### 执行清单（立项）
+- [x] happy path smoke
+- [x] blocked smoke 与退出码语义
+- [x] fatal smoke 与 partial pipeline summary
+- [x] 聚焦回归与审查
+
+### 规划产物
+
+- Spec: `docs/superpowers/specs/2026-03-24-research-governance-cli-smoke-design.md`
+- Plan: `docs/superpowers/plans/2026-03-24-research-governance-cli-smoke-implementation.md`
+
+### 完成结果
+
+- Task 1（happy path smoke）提交：`69157e4`
+- Task 2（blocked smoke）提交：`f12cbfe`、`51889d6`
+- Task 3（fatal smoke）提交：`567c3d0`
+- 审查状态：
+  - Task 1 spec compliance review：已通过
+  - Task 1 code quality review：已通过
+  - Task 2 spec compliance review：已通过
+  - Task 2 code quality review：修复后已通过
+  - Task 3 spec compliance review：已通过
+  - Task 3 code quality review：已通过
+
+### 验证结果
+
+- Task 2 fresh 验证：`pytest tests/test_research_governance_pipeline_cli_smoke.py -q -k "smoke_blocked"` 通过（`2 passed, 1 deselected`）
+- Task 3 fresh 验证：`pytest tests/test_research_governance_pipeline_cli_smoke.py -q -k "smoke_fatal"` 通过（`1 passed, 3 deselected`）
+- smoke 全量：`pytest tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`4 passed`）
+- 聚焦回归：`pytest tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`16 passed`）
+
 ## 下一步行动
 
-1. 补充端到端脚本，把 Agent 输出接入日报/研究流
-2. 修正文档与代码的剩余不一致项
-3. 增加更完整的集成测试与示例脚本
+1. 启动 B 子项目：抽共享 `candidate-config` helper，收敛 CLI 与 smoke 的配置加载路径
+2. 补充端到端脚本，把 Agent 输出接入日报/研究流
+3. 修正文档与代码的剩余不一致项
+4. 增加更完整的集成测试与示例脚本
 
 ## 2026-03-12 项目扫描
 
