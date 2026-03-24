@@ -1,6 +1,7 @@
 import json
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -927,3 +928,93 @@ def test_run_research_governance_pipeline_post_governance_fatal_uses_governance_
     assert payload["error"]["type"] == "RuntimeError"
     assert payload["error"]["message"] == "review artifact fatal"
     assert payload["governance_run_date"] == "2026-03-25"
+
+
+def test_research_governance_pipeline_cli_main_stdout_and_exit_zero(monkeypatch, capsys):
+    import scripts.run_research_governance_pipeline as cli
+
+    calls: dict[str, object] = {}
+
+    def fake_run_research_governance_pipeline(**kwargs):
+        calls.update(kwargs)
+        return {
+            "research_result": {
+                "report_paths": {"json": "reports/research/2026-03-24.json"},
+            },
+            "summary_result": {
+                "output_paths": {"json": "reports/research/summary/research_summary.json"},
+            },
+            "cycle_result": SimpleNamespace(
+                decision=SimpleNamespace(
+                    id=88,
+                    review_status="ready",
+                    blocked_reasons=[],
+                )
+            ),
+            "pipeline_summary_path": "reports/governance/pipeline/2026-03-24.json",
+            "exit_code": 0,
+        }
+
+    monkeypatch.setattr(cli, "run_research_governance_pipeline", fake_run_research_governance_pipeline)
+
+    exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24"])
+
+    assert exit_code == 0
+    assert calls["start_date"] == date(2025, 12, 1)
+    assert calls["end_date"] == date(2026, 3, 24)
+
+    stdout = capsys.readouterr().out
+    assert "research_report=reports/research/2026-03-24.json" in stdout
+    assert "summary_json=reports/research/summary/research_summary.json" in stdout
+    assert "decision_id=88 review_status=ready blocked_reasons=[]" in stdout
+    assert "pipeline_summary=reports/governance/pipeline/2026-03-24.json" in stdout
+
+
+def test_research_governance_pipeline_cli_main_returns_two_when_fail_on_blocked(monkeypatch):
+    import scripts.run_research_governance_pipeline as cli
+
+    calls: dict[str, object] = {}
+
+    def fake_run_research_governance_pipeline(**kwargs):
+        calls.update(kwargs)
+        return {
+            "research_result": {"report_paths": {}},
+            "summary_result": {"output_paths": {}},
+            "cycle_result": SimpleNamespace(
+                decision=SimpleNamespace(
+                    id=89,
+                    review_status="blocked",
+                    blocked_reasons=["SELECTED_STRATEGY_REGIME_MISMATCH"],
+                )
+            ),
+            "pipeline_summary_path": "reports/governance/pipeline/2026-03-24.json",
+            "exit_code": 2,
+        }
+
+    monkeypatch.setattr(cli, "run_research_governance_pipeline", fake_run_research_governance_pipeline)
+
+    exit_code = cli.main(
+        [
+            "--start-date",
+            "2025-12-01",
+            "--end-date",
+            "2026-03-24",
+            "--fail-on-blocked",
+        ]
+    )
+
+    assert calls["fail_on_blocked"] is True
+    assert exit_code == 2
+
+
+def test_research_governance_pipeline_cli_main_returns_one_on_fatal_exception(monkeypatch):
+    import scripts.run_research_governance_pipeline as cli
+
+    def raise_fatal(**kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "run_research_governance_pipeline", raise_fatal)
+
+    exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24"])
+
+    assert exit_code == 1
