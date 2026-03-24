@@ -49,6 +49,8 @@ def test_research_config_loads_regime_policy():
     assert research_config.regime.min_volatility_20 == 0.18
     assert research_config.regime.risk_on.breadth_above_ma120_min == 0.60
     assert research_config.regime.risk_off.breadth_above_ma120_max == 0.35
+    assert research_config.regime.risk_off.return_20_max == 0.0
+    assert research_config.regime.risk_off.return_60_max == 0.0
     assert research_config.sample_split.in_sample_ratio == 0.70
 
 
@@ -93,3 +95,33 @@ def test_regime_classifier_returns_neutral_when_pool_coverage_is_insufficient():
     assert snapshot.reason_codes == ["INSUFFICIENT_POOL_COVERAGE"]
     assert snapshot.metrics_snapshot["coverage"] == 2
     assert snapshot.regime_score == 0.0
+
+
+def test_regime_classifier_returns_no_snapshots_when_disabled():
+    config = ConfigLoader().load_research_config().regime.model_copy(update={"enabled": False})
+    classifier = RegimeClassifier(config)
+
+    snapshots = classifier.classify(_make_risk_on_price_data())
+
+    assert snapshots == []
+
+
+def test_regime_classifier_skips_warmup_dates_without_valid_pool_features():
+    classifier = RegimeClassifier(ConfigLoader().load_research_config().regime)
+
+    snapshots = classifier.classify(_make_risk_on_price_data())
+
+    assert len(snapshots) == 21
+
+
+def test_regime_classifier_keeps_flat_market_as_neutral():
+    classifier = RegimeClassifier(ConfigLoader().load_research_config().regime)
+    flat_price_data = {
+        "510300": _build_price_frame([100.0] * 140),
+        "510500": _build_price_frame([100.0] * 140),
+        "159915": _build_price_frame([100.0] * 140),
+    }
+
+    snapshot = classifier.classify(flat_price_data)[-1]
+
+    assert snapshot.regime_label == "neutral"

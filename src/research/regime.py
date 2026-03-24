@@ -40,6 +40,8 @@ class RegimeClassifier:
         self.config = config
 
     def classify(self, price_data: dict[str, pd.DataFrame]) -> list[RegimeSnapshot]:
+        if not self.config.enabled:
+            return []
         feature_frame = self.build_pool_feature_frame(price_data)
         snapshots: list[RegimeSnapshot] = []
         for trade_date, row in feature_frame.iterrows():
@@ -67,6 +69,8 @@ class RegimeClassifier:
                 values = features.loc[trade_date].to_dict()
                 if self._is_valid_row(values):
                     valid_rows.append(values)
+            if not valid_rows:
+                continue
             rows.append(
                 {
                     "trade_date": trade_date.date(),
@@ -94,7 +98,7 @@ class RegimeClassifier:
         feature_frame["return_60"] = close / close.shift(60) - 1.0
         ma120 = close.rolling(120, min_periods=120).mean()
         feature_frame["ma_distance_120"] = close / ma120 - 1.0
-        feature_frame["above_ma120"] = close > ma120
+        feature_frame["above_ma120"] = close >= ma120
         feature_frame["volatility_20"] = returns.rolling(20, min_periods=20).std() * (252 ** 0.5)
         feature_frame["drawdown_60"] = close / close.rolling(60, min_periods=60).max() - 1.0
         return feature_frame
@@ -190,7 +194,11 @@ class RegimeClassifier:
 
         for feature_name, (min_value, max_value) in thresholds.items():
             current = float(features[feature_name])
+            if feature_name in {"pool_return_20", "pool_return_60"} and min_value == 0.0 and current <= 0.0:
+                return False
             if min_value is not None and current < min_value:
+                return False
+            if feature_name in {"pool_return_20", "pool_return_60"} and max_value == 0.0 and current >= 0.0:
                 return False
             if max_value is not None and current > max_value:
                 return False
@@ -239,7 +247,11 @@ class RegimeClassifier:
 
         for feature_name, min_value, max_value in active_thresholds:
             current = float(features[feature_name])
+            if feature_name in {"pool_return_20", "pool_return_60"} and min_value == 0.0 and current <= 0.0:
+                return False
             if min_value is not None and current < min_value:
+                return False
+            if feature_name in {"pool_return_20", "pool_return_60"} and max_value == 0.0 and current >= 0.0:
                 return False
             if max_value is not None and current > max_value:
                 return False

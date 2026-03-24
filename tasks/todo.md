@@ -621,10 +621,11 @@
 - 已扩展 `config/research.yaml`，补齐规则型 regime 阈值和 70/30 样本切分配置
 - 已新增 `src/research/regime.py`，支持 ETF 池价格序列到逐日 `RegimeSnapshot` 列表的规则型分类
 - 已新增 `tests/test_regime_classifier.py`，覆盖配置加载、`risk_on/risk_off` 判定与 coverage 不足回退
+- 已补齐 `enabled=false`、warm-up 过滤和横盘市场 `neutral` 的边界修复
 - 已生成 Task 1 提交：`a758d45 feat: add regime classifier for research`
 
 ### Task 1 验证
-- `pytest -q tests/test_regime_classifier.py -v` 通过，`3 passed`
+- `pytest -q tests/test_regime_classifier.py -v` 通过，`6 passed`
 - `pytest -q tests/test_research_pipeline.py -v` 通过，`3 passed`
 - `pytest -q tests/test_research_summary.py -v` 通过，`2 passed`
 - `python3 -m compileall src/research src/core/config.py tests/test_regime_classifier.py` 通过
@@ -657,5 +658,5 @@
 ### Task 4 验证
 - `pytest -q tests/test_research_summary.py -v` 通过，`2 passed`
 - `pytest -q tests/test_regime_classifier.py tests/test_regime_analysis.py tests/test_research_pipeline.py tests/test_research_summary.py -v` 通过，`11 passed`
-- `pytest -q` 通过，`81 passed in 2.25s`
+- `pytest -q` 通过，`84 passed in 2.21s`
 - `python3 -m compileall src scripts tests` 通过
