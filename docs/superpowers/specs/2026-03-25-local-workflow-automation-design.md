@@ -158,24 +158,43 @@
 - `reports/workflow/automation/latest_run.json`
 - `reports/workflow/automation/latest_attention.json`
 - `reports/workflow/automation/latest_attention.md`
+- `reports/workflow/automation/runs/<automation_run_id>/runner_stdout.log`
+- `reports/workflow/automation/runs/<automation_run_id>/runner_stderr.log`
 
 设计原则：
 
 - `run_history.jsonl` 是追加式历史索引
 - `latest_run.json` 始终代表最近一次 wrapper 执行结果
 - `latest_attention.*` 只在“需要人工关注”时更新
-- 自动化层只引用现有 artifact 路径，不复制原文件
+- 自动化层只引用现有业务 artifact 路径，不复制 manifest / health / summary 等原文件
+- wrapper 自己生成的 stdout / stderr 日志视为自动化层原生 artifact，可单独落盘
 
 ## 8. 索引结构设计
+
+### 8.0 Automation Run ID
+
+wrapper 每次执行都必须生成唯一 `automation_run_id`，作为自动化层自己的稳定主键。
+
+建议格式：
+
+- `YYYYMMDDTHHMMSSZ-<shortid>`
+
+要求：
+
+- 路径安全
+- 与现有 `run_id` 风格一致
+- 即使 runner 完全没有输出 `run_id`，自动化层仍可凭 `automation_run_id` 建索引与落日志
 
 ### 8.1 历史索引字段
 
 `run_history.jsonl` 与 `latest_run.json` 使用同一 schema，至少包含：
 
+- `automation_run_id`
 - `automation_started_at`
 - `automation_finished_at`
 - `runner_command`
 - `runner_process_exit_code`
+- `wrapper_exit_code`
 - `run_id`
 - `workflow_manifest`
 - `workflow_status`
@@ -183,14 +202,20 @@
 - `manifest_exit_code`
 - `failed_step`
 - `blocked_reasons`
-- `health_report_path`
-- `post_publish_health_report_path`
-- `pipeline_summary_path`
+- `health_check_report_path`
+- `post_publish_health_check_report_path`
+- `research_governance_pipeline_summary_path`
+- `runner_stdout_path`
+- `runner_stderr_path`
 
 来源原则：
 
 - runner 进程事实来自 stdout 与 process exit code
 - 业务阶段细节来自 `workflow_manifest`
+- `health_check_report_path` 派生自 `health_check_result.report_path`
+- `post_publish_health_check_report_path` 派生自 `post_publish_health_check_result.report_path`
+- `research_governance_pipeline_summary_path` 派生自 `research_governance_result.pipeline_summary`
+- 上述派生字段允许为 `null`
 - 自动化层不再生成第二份“业务 summary”
 
 ### 8.2 更新规则
@@ -199,8 +224,7 @@
 
 1. 追加一条 `run_history.jsonl`
 2. 覆盖写 `latest_run.json`
-3. 如果需要人工关注，再刷新 `latest_attention.json`
-4. 同时刷新 `latest_attention.md`
+3. 仅当需要人工关注时，才同时刷新 `latest_attention.json` 与 `latest_attention.md`
 
 当 `workflow_status = succeeded` 时：
 
@@ -221,15 +245,18 @@ attention 范围固定覆盖：
 `latest_attention.json` 至少包含：
 
 - `attention_type`
+- `automation_run_id`
 - `run_id`
 - `workflow_status`
 - `failed_step`
 - `blocked_reasons`
 - `workflow_manifest`
-- `health_report_path`
-- `post_publish_health_report_path`
-- `pipeline_summary_path`
+- `health_check_report_path`
+- `post_publish_health_check_report_path`
+- `research_governance_pipeline_summary_path`
 - `runner_process_exit_code`
+- `runner_stdout_path`
+- `runner_stderr_path`
 - `suggested_next_action`
 
 `latest_attention.md` 采用面向人工的固定摘要结构：
@@ -239,6 +266,7 @@ attention 范围固定覆盖：
 - 失败阶段或 blocked 原因
 - manifest 路径
 - 关键关联 artifact 路径
+- runner stdout / stderr 路径
 - 建议动作，例如：
   - 先打开 manifest 核对阶段结果
   - 若是 `blocked`，判断是否需要人工审批/重新研究
@@ -260,15 +288,38 @@ wrapper 必须通过子进程真实执行：
 - 能覆盖 stdout 合同与进程退出码
 - 后续接 cron 时无需改消费逻辑
 
-### 10.2 退出码继承
+### 10.2 工作目录策略
 
-wrapper 自己不发明新的退出码，直接继承 runner 退出码：
+wrapper 必须使用 runner 脚本绝对路径启动子进程，并显式设置子进程 `cwd`：
+
+- 生产默认：repo root
+- 测试 / 隔离场景：允许覆盖到指定工作目录，例如 `tmp_path`
+
+原因：
+
+- runner 代码与配置仍来自 repo
+- `reports/...` 等相对输出路径则写入目标工作目录
+- 这样既能做真实自动化 smoke，又不会污染仓库内真实 `reports/`
+
+### 10.3 退出码语义
+
+wrapper 需要同时区分两类退出码：
+
+- `runner_process_exit_code`：始终记录 runner 真实退出码
+- `wrapper_exit_code`：wrapper 自己对外返回的退出码
+
+正常情况下，`wrapper_exit_code` 直接继承 runner 退出码：
 
 - `0`：成功，或 blocked 但 runner 返回 0
 - `2`：blocked 且启用 `--fail-on-blocked`
-- `1`：preflight 失败、fatal、或 automation contract error
+- `1`：preflight 失败或 fatal
 
-其中 automation contract error 也统一返回 `1`。
+若 wrapper 自身失败（例如 contract error、索引写盘失败），则：
+
+- `wrapper_exit_code = 1`
+- 但 `runner_process_exit_code` 仍保留 runner 原始值
+
+这样自动化层既能保留 runner 事实，也能在消费层自失败时给出统一非零码。
 
 ## 11. 合同校验设计
 
@@ -283,6 +334,12 @@ wrapper 不应盲信 stdout，应做轻量校验：
 - `workflow_status`
 - `publish_executed`
 
+若缺失导致无法获得 runner `run_id`：
+
+- `run_id` 允许为 `null`
+- 仍必须生成 `automation_run_id`
+- 仍必须落 `runner_stdout_path` 与 `runner_stderr_path`
+
 ### 11.2 manifest 校验
 
 若 `workflow_manifest` 路径不存在，视为 contract error。
@@ -293,14 +350,15 @@ wrapper 不应盲信 stdout，应做轻量校验：
 
 - stdout `run_id` == manifest `run_id`
 - stdout `workflow_status` == manifest `status`
-- runner 进程退出码与 manifest `exit_code` 语义一致
+- 当 wrapper 未自失败时，`runner_process_exit_code` 与 manifest `exit_code` 一致
+- 当 manifest 中嵌套路径缺失时，派生字段按 `null` 处理，而不是自行补默认值
 
 contract error 处理要求：
 
 - 写入 `run_history.jsonl` 与 `latest_run.json`
 - 刷新 `latest_attention.json` 与 `latest_attention.md`
 - `attention_type = "automation_contract_error"`
-- wrapper 返回 `1`
+- `wrapper_exit_code = 1`
 
 ## 12. 测试边界
 
@@ -344,12 +402,17 @@ contract error 处理要求：
 
 - 真实调用 `scripts/run_workflow_automation.py`
 - wrapper 再真实调用现有 runner
+- 用 runner 脚本绝对路径 + `cwd=tmp_path` 的方式隔离写盘
 - 在 `tmp_path` 下断言：
   - `run_history.jsonl`
   - `latest_run.json`
   - `latest_attention.json`
   - `latest_attention.md`
   - 以及它们正确引用 `workflow_manifest`
+- 增加一个序列语义断言：
+  - 先跑一轮 `blocked` 或 `failed`
+  - 再跑一轮 `succeeded`
+  - 断言 `latest_attention.*` 仍保留上一次需人工关注的内容，不被成功运行覆盖
 
 ## 13. 风险与控制
 
