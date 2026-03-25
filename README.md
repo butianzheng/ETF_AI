@@ -211,7 +211,7 @@ python scripts/run_workflow_automation.py --workdir /tmp/workflow_job -- --start
 - `--workdir` 控制 runner 进程的工作目录（cwd）；当 `workdir != repo root` 时，会自动准备 `config -> <repo>/config` 符号链接，保证配置解析路径一致
 - `--` 后面的参数会原样透传给 runner（例如 `--preflight-only`、`--fail-on-blocked`、`--publish` 等）
 
-自动化产物目录（固定）：
+自动化产物目录（固定，相对 `--workdir` 解析；未显式传 `--workdir` 时等于 repo root）：
 - `reports/workflow/automation/run_history.jsonl`：历史运行索引（append-only）
 - `reports/workflow/automation/latest_run.json`：最近一次 wrapper 运行快照（每次运行都会更新）
 - `reports/workflow/automation/latest_attention.json|md`：最近一次“需人工关注”摘要，仅在 `blocked`、`failed`、`automation_contract_error` 时刷新
