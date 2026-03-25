@@ -83,24 +83,51 @@ def _write_health_report(result: Any, stage: str | None = None) -> str:
     return str(output_path)
 
 
-def _write_workflow_artifacts(payload: dict[str, Any]) -> Path:
+def _write_workflow_artifacts(payload: dict[str, Any]) -> dict[str, str]:
     paths = write_workflow_manifest(payload, root=Path("reports/workflow"))
-    return Path(paths["latest_summary_path"])
+    return paths
+
+
+def _print_workflow_stdout_contract(
+    *,
+    run_id: str,
+    workflow_manifest: str,
+    workflow_status: str,
+    publish_executed: bool,
+) -> None:
+    print(f"run_id={run_id}")
+    print(f"workflow_manifest={workflow_manifest}")
+    print(f"workflow_status={workflow_status}")
+    print(f"publish_executed={'true' if publish_executed else 'false'}")
 
 
 def _finalize_workflow_run(payload: dict[str, Any], *, workflow_status: str) -> None:
-    _write_workflow_artifacts(payload)
-    print(f"workflow_status={workflow_status}")
+    paths = _write_workflow_artifacts(payload)
+    run_id = str(payload.get("run_id", ""))
+    workflow_manifest = str(payload.get("workflow_manifest_path") or paths.get("manifest_path") or "")
     publish_executed = bool(payload.get("publish_result", {}).get("executed"))
-    print(f"publish_executed={'true' if publish_executed else 'false'}")
+    _print_workflow_stdout_contract(
+        run_id=run_id,
+        workflow_manifest=workflow_manifest,
+        workflow_status=workflow_status,
+        publish_executed=publish_executed,
+    )
 
 
 def _print_finalize_write_failure(error: Exception, payload: dict[str, Any], *, workflow_status: str) -> None:
-    print(f"workflow_status={workflow_status}")
+    run_id = str(payload.get("run_id", ""))
+    intended_manifest = payload.get("workflow_manifest_path")
+    if not intended_manifest and run_id:
+        intended_manifest = str(Path("reports/workflow") / "runs" / run_id / "workflow_manifest.json")
     print("workflow_artifact_write=failed")
     print(f"workflow_artifact_write_error={type(error).__name__}: {error}")
     publish_executed = bool(payload.get("publish_result", {}).get("executed"))
-    print(f"publish_executed={'true' if publish_executed else 'false'}")
+    _print_workflow_stdout_contract(
+        run_id=run_id,
+        workflow_manifest=str(intended_manifest or ""),
+        workflow_status=workflow_status,
+        publish_executed=publish_executed,
+    )
 
 
 def _research_governance_payload(pipeline_result: dict[str, Any]) -> dict[str, Any]:

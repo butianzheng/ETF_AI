@@ -1,3 +1,4 @@
+import re
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -89,6 +90,9 @@ def test_workflow_runner_happy_path_defaults_to_no_publish(tmp_path, monkeypatch
     summary_path = tmp_path / "reports" / "workflow" / "end_to_end_workflow_summary.json"
     assert exit_code == 0
     assert [name for name, _ in calls] == ["research_governance", "health"]
+    assert re.search(r"^run_id=\S+", stdout, re.MULTILINE) is not None
+    assert re.search(r"^workflow_manifest=\S+", stdout, re.MULTILINE) is not None
+    assert re.search(r"^workflow_status=succeeded$", stdout, re.MULTILINE)
     assert "publish_executed=false" in stdout
     assert summary_path.exists()
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -283,7 +287,10 @@ def test_workflow_runner_preflight_only_writes_summary_and_returns_zero(tmp_path
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["preflight_result"]["status"] == "passed"
     assert payload["status"] == "preflight_only"
+    assert re.search(r"^run_id=\S+", stdout, re.MULTILINE)
+    assert re.search(r"^workflow_manifest=\S+", stdout, re.MULTILINE)
     assert "workflow_status=preflight_only" in stdout
+    assert "publish_executed=false" in stdout
 
 
 def test_workflow_runner_returns_one_when_preflight_fails(tmp_path, monkeypatch, capsys):
@@ -310,7 +317,10 @@ def test_workflow_runner_returns_one_when_preflight_fails(tmp_path, monkeypatch,
     assert payload["failed_step"] == "preflight"
     manifest_payload = json.loads(Path(payload["workflow_manifest_path"]).read_text(encoding="utf-8"))
     assert manifest_payload == payload
+    assert re.search(r"^run_id=\S+", stdout, re.MULTILINE)
+    assert re.search(r"^workflow_manifest=\S+", stdout, re.MULTILINE)
     assert "workflow_status=failed" in stdout
+    assert "publish_executed=false" in stdout
 
 
 def test_workflow_runner_preflight_failed_when_workflow_output_unwritable_is_controlled(
@@ -326,8 +336,11 @@ def test_workflow_runner_preflight_failed_when_workflow_output_unwritable_is_con
 
     stdout = capsys.readouterr().out
     assert exit_code == 1
+    assert re.search(r"^run_id=\S+", stdout, re.MULTILINE)
+    assert re.search(r"^workflow_manifest=\S+", stdout, re.MULTILINE)
     assert "workflow_status=failed" in stdout
     assert "workflow_artifact_write=failed" in stdout
+    assert "publish_executed=false" in stdout
 
 
 def test_workflow_runner_blocked_stdout_status_matches_exit_code(tmp_path, monkeypatch, capsys):
@@ -363,10 +376,13 @@ def test_workflow_runner_blocked_stdout_status_matches_exit_code(tmp_path, monke
 
     stdout = capsys.readouterr().out
     assert exit_code == 2
+    assert re.search(r"^run_id=\S+", stdout, re.MULTILINE)
+    assert re.search(r"^workflow_manifest=\S+", stdout, re.MULTILINE)
     assert "workflow_status=blocked" in stdout
+    assert "publish_executed=false" in stdout
 
 
-def test_workflow_runner_failed_summary_for_research_governance_fatal(tmp_path, monkeypatch):
+def test_workflow_runner_failed_summary_for_research_governance_fatal(tmp_path, monkeypatch, capsys):
     import scripts.run_end_to_end_workflow as cli
 
     monkeypatch.chdir(tmp_path)
@@ -377,6 +393,7 @@ def test_workflow_runner_failed_summary_for_research_governance_fatal(tmp_path, 
     monkeypatch.setattr(cli, "run_research_governance_pipeline", _raise_fatal)
 
     exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24"])
+    stdout = capsys.readouterr().out
 
     assert exit_code == 1
     summary_path = tmp_path / "reports" / "workflow" / "end_to_end_workflow_summary.json"
@@ -385,6 +402,10 @@ def test_workflow_runner_failed_summary_for_research_governance_fatal(tmp_path, 
     assert payload["status"] == "failed"
     assert payload["failed_step"] == "research_governance"
     assert payload["error"]["message"] == "research pipeline exploded"
+    assert re.search(r"^run_id=\S+", stdout, re.MULTILINE)
+    assert re.search(r"^workflow_manifest=\S+", stdout, re.MULTILINE)
+    assert "workflow_status=failed" in stdout
+    assert "publish_executed=false" in stdout
 
 
 def test_workflow_runner_health_fatal_overrides_blocked_exit_code(tmp_path, monkeypatch):
