@@ -1,5 +1,4 @@
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +56,9 @@ def test_workflow_automation_wrapper_cli_smoke_failed_then_success_retains_atten
     failed_automation_run_id = first_run["automation_run_id"]
     assert first_run["wrapper_exit_code"] == 1
     assert first_attention["automation_run_id"] == failed_automation_run_id
+    assert first_run["workflow_manifest"]
+    failed_manifest_path = _resolve_from_workdir(str(first_run["workflow_manifest"]), workdir=workdir)
+    assert failed_manifest_path.exists()
 
     # 2) success preflight
     succeeded = _run_wrapper(
@@ -79,6 +81,15 @@ def test_workflow_automation_wrapper_cli_smoke_failed_then_success_retains_atten
     assert len(history_lines) == 2
     assert retained_attention["automation_run_id"] == failed_automation_run_id
     assert second_run["automation_run_id"] != failed_automation_run_id
+    assert retained_attention["workflow_manifest"]
+    retained_manifest_path = _resolve_from_workdir(str(retained_attention["workflow_manifest"]), workdir=workdir)
+    assert retained_manifest_path.exists()
+
+    history_records = [json.loads(line) for line in history_lines]
+    for item in history_records:
+        assert item["workflow_manifest"]
+        manifest_path = _resolve_from_workdir(str(item["workflow_manifest"]), workdir=workdir)
+        assert manifest_path.exists()
 
     stdout_path = _resolve_from_workdir(str(retained_attention["runner_stdout_path"]), workdir=workdir)
     stderr_path = _resolve_from_workdir(str(retained_attention["runner_stderr_path"]), workdir=workdir)
@@ -87,4 +98,4 @@ def test_workflow_automation_wrapper_cli_smoke_failed_then_success_retains_atten
 
     attention_md_text = latest_attention_md.read_text(encoding="utf-8")
     assert failed_automation_run_id in attention_md_text
-
+    assert str(retained_attention["workflow_manifest"]) in attention_md_text
