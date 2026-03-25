@@ -298,6 +298,24 @@
   - 后续修订：`01bd729`（`docs: fix workflow runner docs per review`）、`be69ac5`（`docs: update workflow runner task tracking`）、`a16baa9`（`docs: refresh workflow runner regression record`）、`b307d28`（`docs: complete workflow runner task4 commit chain`）
   - 说明：任务跟踪的“自更新提交”不在同一提交内自指记录；如有后续跟踪刷新，以 `git log` 为准。
 
+## 2026-03-25 ETF Ops 单一总入口 CLI
+
+### 执行清单（立项）
+- [ ] Task 1：新增总入口 CLI 骨架、共享 adapter 与命令树
+- [ ] Task 2：落地 `status latest` 读取、归一化与输出
+- [ ] Task 3：旧脚本薄兼容层与共享 adapter 收敛
+- [ ] Task 4：README / tasks 更新与最终聚焦回归
+
+### 规划产物
+
+- Spec: `docs/superpowers/specs/2026-03-25-etf-ops-unified-cli-design.md`
+- Plan: `docs/superpowers/plans/2026-03-25-etf-ops-unified-cli-implementation.md`
+
+### 审查状态
+
+- Spec review：已通过
+- Plan review：已通过
+
 ## 下一步行动（切到后续阶段建议）
 
 1. 在 CI/自动化里解析 stdout 合同，按 `workflow_manifest` 收集 per-run JSON 作为 artifact（避免依赖 legacy summary 覆盖语义）
