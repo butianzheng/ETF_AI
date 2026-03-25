@@ -304,6 +304,32 @@
 2. 将 per-run manifest 接入可观测性与问题定位链路（失败/blocked 的 run_id 可直接定位到对应 manifest 与 health report）
 3. 进入下一阶段：围绕 runner 的稳定运行做工程化（定时触发、artifact 保留策略、告警与人工确认流程）
 
+## 2026-03-25 Local Workflow Automation Wrapper
+
+### 执行清单（立项）
+- [x] 完成 design spec
+- [x] 完成 implementation plan
+- [ ] Task 1：自动化 helper、索引写盘与 attention 合同
+- [ ] Task 2：wrapper 脚本、退出码语义与 contract error 处理
+- [ ] Task 3：真实 wrapper smoke 与 attention 保留语义
+- [ ] Task 4：README / 任务跟踪 / 最终聚焦回归
+
+### 规划产物
+
+- Spec: `docs/superpowers/specs/2026-03-25-local-workflow-automation-design.md`
+- Plan: `docs/superpowers/plans/2026-03-25-local-workflow-automation-implementation.md`
+
+### 当前状态
+
+- Spec review：已通过
+- Plan review：已通过
+
+## 下一步行动
+
+1. 审查并确认 Local Workflow Automation Wrapper implementation plan
+2. 按 plan 执行 Task 1，先锁定 automation helper 与 history/latest/attention 合同
+3. 再执行 wrapper 脚本与真实 smoke，最后更新 README / tasks 并做聚焦回归
+
 ## 2026-03-12 项目扫描
 
 ### 扫描计划
