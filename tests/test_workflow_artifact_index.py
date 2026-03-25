@@ -190,6 +190,16 @@ def test_iter_history_records_skips_bad_lines_and_keeps_order(tmp_path: Path) ->
     assert [record["automation_run_id"] for record in records] == ["auto-001", "auto-002"]
 
 
+def test_iter_history_records_raises_value_error_for_history_path_error(tmp_path: Path) -> None:
+    from src.workflow.automation_index import iter_history_records
+
+    history_path = tmp_path / "reports" / "workflow" / "automation" / "run_history.jsonl"
+    history_path.mkdir(parents=True, exist_ok=True)
+
+    with pytest.raises(ValueError, match="failed to read"):
+        list(iter_history_records(tmp_path))
+
+
 def test_find_run_view_prefers_automation_run_id_then_latest_workflow_run_id(tmp_path: Path) -> None:
     from src.workflow.automation_index import find_run_view
 
@@ -267,6 +277,7 @@ def test_rebuild_legacy_detail_view_from_latest_record(tmp_path: Path) -> None:
         "publish_executed": False,
         "requested_workdir": str(tmp_path),
         "effective_workdir": str(tmp_path),
+        "suggested_next_action": "inspect failed_step=preflight and workflow manifest",
     }
 
     payload = rebuild_legacy_detail_view(record, effective_workdir=tmp_path, source="legacy_fallback")
@@ -287,6 +298,25 @@ def test_rebuild_legacy_detail_view_from_latest_record(tmp_path: Path) -> None:
     assert payload["runner_stderr_path"] == str(
         tmp_path / "reports" / "workflow" / "automation" / "runs" / "auto-004" / "runner_stderr.log"
     )
+    assert payload["suggested_next_action"] == "inspect failed_step=preflight and workflow manifest"
+
+
+def test_rebuild_legacy_detail_view_raises_for_non_string_manifest(tmp_path: Path) -> None:
+    from src.workflow.automation_index import rebuild_legacy_detail_view
+
+    record = {
+        "automation_run_id": "auto-005",
+        "run_id": "wf-005",
+        "workflow_status": "failed",
+        "automation_started_at": "2026-03-25T09:00:00Z",
+        "automation_finished_at": "2026-03-25T09:01:00Z",
+        "wrapper_exit_code": 1,
+        "runner_process_exit_code": 1,
+        "workflow_manifest": ["bad"],
+    }
+
+    with pytest.raises(ValueError, match="workflow_manifest"):
+        rebuild_legacy_detail_view(record, effective_workdir=tmp_path, source="legacy_fallback")
 
 
 def test_load_latest_run_view_falls_back_to_workflow_summary_when_latest_missing(tmp_path: Path) -> None:
@@ -330,6 +360,28 @@ def test_load_latest_run_view_raises_when_latest_exists_but_missing_required_fie
     )
 
     with pytest.raises(ValueError, match="missing fields"):
+        load_latest_run_view(tmp_path)
+
+
+def test_load_latest_run_view_raises_when_legacy_manifest_invalid_type(tmp_path: Path) -> None:
+    from src.workflow.automation_index import load_latest_run_view
+
+    _write_json(
+        tmp_path / "reports" / "workflow" / "automation" / "latest_run.json",
+        {
+            "automation_run_id": "auto-bad-manifest",
+            "run_id": "wf-bad-manifest",
+            "workflow_status": "failed",
+            "automation_started_at": "2026-03-25T08:00:00Z",
+            "automation_finished_at": "2026-03-25T08:01:00Z",
+            "wrapper_exit_code": 1,
+            "runner_process_exit_code": 1,
+            "publish_executed": False,
+            "workflow_manifest": ["bad"],
+        },
+    )
+
+    with pytest.raises(ValueError, match="workflow_manifest"):
         load_latest_run_view(tmp_path)
 
 

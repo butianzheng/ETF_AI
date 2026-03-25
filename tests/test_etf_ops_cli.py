@@ -52,6 +52,9 @@ def test_etf_ops_run_help_smoke_commands():
         ["automation", "run", "--help"],
         ["daily", "run", "--help"],
         ["research-governance", "run", "--help"],
+        ["status", "latest", "--help"],
+        ["status", "runs", "--help"],
+        ["status", "show", "--help"],
     ]
 
     for args in checks:
@@ -174,3 +177,65 @@ def test_workflow_run_does_not_add_wrapper_stdout(monkeypatch, capsys):
 
     assert exit_code == 0
     assert out == "run_id=abc\nworkflow_status=succeeded\n"
+
+
+def test_status_runs_dispatches_to_status_handler(monkeypatch):
+    import src.cli.etf_ops as cli
+
+    received: dict[str, object] = {}
+
+    def _fake(workdir: str | None, *, limit: int, output_json: bool) -> int:
+        received["workdir"] = workdir
+        received["limit"] = limit
+        received["output_json"] = output_json
+        return 13
+
+    monkeypatch.setattr(cli, "run_status_runs", _fake)
+
+    exit_code = cli.main(["status", "runs", "--workdir", "/tmp/a", "--limit", "7", "--json"])
+
+    assert exit_code == 13
+    assert received == {"workdir": "/tmp/a", "limit": 7, "output_json": True}
+
+
+def test_status_show_dispatches_to_status_handler(monkeypatch):
+    import src.cli.etf_ops as cli
+
+    received: dict[str, object] = {}
+
+    def _fake(workdir: str | None, *, run_id: str, output_json: bool) -> int:
+        received["workdir"] = workdir
+        received["run_id"] = run_id
+        received["output_json"] = output_json
+        return 19
+
+    monkeypatch.setattr(cli, "run_status_show", _fake)
+
+    exit_code = cli.main(["status", "show", "--run-id", "rid-001", "--workdir", "/tmp/b"])
+
+    assert exit_code == 19
+    assert received == {"workdir": "/tmp/b", "run_id": "rid-001", "output_json": False}
+
+
+def test_status_runs_rejects_zero_limit():
+    proc = _run_entry(["status", "runs", "--limit", "0"])
+
+    assert proc.returncode == 2
+    assert "limit" in proc.stderr
+    assert "positive" in proc.stderr
+
+
+def test_status_runs_rejects_negative_limit():
+    proc = _run_entry(["status", "runs", "--limit", "-1"])
+
+    assert proc.returncode == 2
+    assert "limit" in proc.stderr
+    assert "positive" in proc.stderr
+
+
+def test_status_runs_rejects_non_integer_limit_with_user_friendly_message():
+    proc = _run_entry(["status", "runs", "--limit", "abc"])
+
+    assert proc.returncode == 2
+    assert "must be a positive integer" in proc.stderr
+    assert "_positive_int" not in proc.stderr

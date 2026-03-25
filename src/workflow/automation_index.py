@@ -296,6 +296,8 @@ def iter_history_records(root: str | Path) -> Iterator[dict[str, Any]]:
                     yield item
     except FileNotFoundError:
         return
+    except OSError as exc:
+        raise ValueError(f"failed to read {str(history_path)}") from exc
 
 
 def _record_to_summary_view(
@@ -395,6 +397,9 @@ def rebuild_legacy_detail_view(
 
     root = Path(effective_workdir)
     blocked_reasons = _normalize_blocked_reasons(record.get("blocked_reasons"))
+    workflow_manifest = record.get("workflow_manifest")
+    if not isinstance(workflow_manifest, str) or not workflow_manifest.strip():
+        raise ValueError("workflow_manifest must be non-empty string")
 
     return {
         "source": source,
@@ -405,11 +410,12 @@ def rebuild_legacy_detail_view(
         "finished_at": record.get("automation_finished_at"),
         "wrapper_exit_code": record.get("wrapper_exit_code"),
         "runner_process_exit_code": record.get("runner_process_exit_code"),
-        "manifest_path": _resolve_abs_path(record.get("workflow_manifest"), effective_workdir=root),
+        "manifest_path": _resolve_abs_path(workflow_manifest, effective_workdir=root),
         "runner_stdout_path": _resolve_abs_path(record.get("runner_stdout_path"), effective_workdir=root),
         "runner_stderr_path": _resolve_abs_path(record.get("runner_stderr_path"), effective_workdir=root),
         "failed_step": record.get("failed_step"),
         "blocked_reasons": blocked_reasons,
+        "suggested_next_action": record.get("suggested_next_action"),
         "publish_executed": record.get("publish_executed"),
         "requested_workdir": record.get("requested_workdir"),
         "effective_workdir": record.get("effective_workdir"),

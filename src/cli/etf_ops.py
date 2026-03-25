@@ -9,7 +9,7 @@ from src.cli.commands import (
     run_research_governance_command,
     run_workflow_command,
 )
-from src.cli.status import run_status_latest
+from src.cli.status import run_status_latest, run_status_runs, run_status_show
 
 
 def _ensure_preflight_only(argv: list[str]) -> list[str]:
@@ -22,6 +22,16 @@ def _strip_leading_double_dash(argv: list[str]) -> list[str]:
     if argv and argv[0] == "--":
         return argv[1:]
     return list(argv)
+
+
+def _positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,6 +61,24 @@ def build_parser() -> argparse.ArgumentParser:
     status_latest = status_subparsers.add_parser("latest", help="Show latest workflow status")
     status_latest.add_argument("--workdir", help="Artifacts root directory")
     status_latest.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output JSON only",
+    )
+    status_runs = status_subparsers.add_parser("runs", help="List workflow runs from automation history")
+    status_runs.add_argument("--workdir", help="Artifacts root directory")
+    status_runs.add_argument("--limit", type=_positive_int, default=20, help="Maximum runs to show")
+    status_runs.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output JSON only",
+    )
+    status_show = status_subparsers.add_parser("show", help="Show details for a workflow run")
+    status_show.add_argument("--workdir", help="Artifacts root directory")
+    status_show.add_argument("--run-id", required=True, help="automation_run_id or workflow run_id")
+    status_show.add_argument(
         "--json",
         dest="json_output",
         action="store_true",
@@ -86,5 +114,13 @@ def main(argv: list[str] | None = None) -> int:
         if passthrough:
             parser.error(f"unrecognized arguments: {' '.join(passthrough)}")
         return run_status_latest(args.workdir, output_json=args.json_output)
+    if args.command == "status" and args.status_command == "runs":
+        if passthrough:
+            parser.error(f"unrecognized arguments: {' '.join(passthrough)}")
+        return run_status_runs(args.workdir, limit=args.limit, output_json=args.json_output)
+    if args.command == "status" and args.status_command == "show":
+        if passthrough:
+            parser.error(f"unrecognized arguments: {' '.join(passthrough)}")
+        return run_status_show(args.workdir, run_id=args.run_id, output_json=args.json_output)
 
     parser.error("Unsupported command")
