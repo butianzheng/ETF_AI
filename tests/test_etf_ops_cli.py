@@ -45,6 +45,33 @@ def test_etf_ops_subcommand_help_smoke():
     assert "preflight" in proc.stdout
 
 
+def test_etf_ops_run_help_smoke_commands():
+    checks = [
+        ["workflow", "run", "--help"],
+        ["workflow", "preflight", "--help"],
+        ["automation", "run", "--help"],
+        ["daily", "run", "--help"],
+        ["research-governance", "run", "--help"],
+    ]
+
+    for args in checks:
+        proc = _run_entry(args)
+        assert proc.returncode == 0, f"help failed for args={args}: {proc.stderr}"
+        assert "usage:" in proc.stdout.lower()
+
+
+def test_automation_run_parser_uses_remainder():
+    import src.cli.etf_ops as cli
+
+    parser = cli.build_parser()
+    args, unknown = parser.parse_known_args(
+        ["automation", "run", "--", "--workdir", "/tmp/wd", "--", "--preflight-only"]
+    )
+
+    assert unknown == []
+    assert args.runner_args == ["--", "--workdir", "/tmp/wd", "--", "--preflight-only"]
+
+
 def test_workflow_preflight_appends_preflight_only(monkeypatch):
     import src.cli.etf_ops as cli
 

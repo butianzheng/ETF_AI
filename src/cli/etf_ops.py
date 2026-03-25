@@ -28,7 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     automation = subparsers.add_parser("automation", help="Workflow automation commands")
     automation_subparsers = automation.add_subparsers(dest="automation_command", required=True)
-    automation_subparsers.add_parser("run", help="Run automation wrapper")
+    automation_run = automation_subparsers.add_parser("run", help="Run automation wrapper")
+    automation_run.add_argument("runner_args", nargs=argparse.REMAINDER, help="Args for automation wrapper")
 
     daily = subparsers.add_parser("daily", help="Daily operation commands")
     daily_subparsers = daily.add_subparsers(dest="daily_command", required=True)
@@ -54,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         return run_workflow_command(workflow_args)
 
     if args.command == "automation" and args.automation_command == "run":
-        return run_automation_command(list(passthrough or []))
+        return run_automation_command(list(args.runner_args or []))
 
     if args.command == "daily" and args.daily_command == "run":
         return run_daily_command(list(passthrough or []))
