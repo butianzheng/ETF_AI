@@ -108,8 +108,8 @@ python scripts/build_report_portal.py
 ### 10. 治理自动化、发布与回退
 
 ```bash
-python scripts/run_research_governance_pipeline.py --start-date 2025-12-01 --end-date 2026-03-24
-python scripts/run_research_governance_pipeline.py --start-date 2025-12-01 --end-date 2026-03-24 --fail-on-blocked
+python scripts/etf_ops.py research-governance run --start-date 2025-12-01 --end-date 2026-03-24
+python scripts/etf_ops.py research-governance run --start-date 2025-12-01 --end-date 2026-03-24 --fail-on-blocked
 
 python scripts/run_research.py --start-date 2025-12-01 --end-date 2026-03-11
 python scripts/summarize_research_reports.py
@@ -121,7 +121,7 @@ python scripts/rollback_governance_decision.py --approved-by your_name --reason 
 ```
 
 说明：
-- 推荐优先使用 `run_research_governance_pipeline.py` 一次串联研究、汇总、governance cycle 与门户刷新
+- 推荐优先使用 `python scripts/etf_ops.py research-governance run ...` 一次串联研究、汇总、governance cycle 与门户刷新
 - `--fail-on-blocked` 会在出现 blocked/fatal error 时以非零码退出，方便 CI 门禁
 - 推荐顺序是：研究 -> 汇总 -> governance cycle -> 人工确认 publish -> health check
 - `run_governance_cycle.py` 会复用治理评估逻辑，生成/去重 draft，并给出 `ready/blocked` review 状态
@@ -136,7 +136,7 @@ python scripts/rollback_governance_decision.py --approved-by your_name --reason 
 默认安全模式：
 
 ```bash
-python scripts/run_end_to_end_workflow.py --start-date 2025-12-01 --end-date 2026-03-24
+python scripts/etf_ops.py workflow run --start-date 2025-12-01 --end-date 2026-03-24
 ```
 
 说明：
@@ -147,16 +147,15 @@ python scripts/run_end_to_end_workflow.py --start-date 2025-12-01 --end-date 202
 仅执行预检（常用于 CI 或快速确认输入参数/目录结构是否可用）：
 
 ```bash
-python scripts/run_end_to_end_workflow.py \
+python scripts/etf_ops.py workflow preflight \
   --start-date 2025-12-01 \
-  --end-date 2026-03-24 \
-  --preflight-only
+  --end-date 2026-03-24
 ```
 
 如需把 daily 纳入同一入口：
 
 ```bash
-python scripts/run_end_to_end_workflow.py \
+python scripts/etf_ops.py workflow run \
   --start-date 2025-12-01 \
   --end-date 2026-03-24 \
   --run-daily \
@@ -169,7 +168,7 @@ python scripts/run_end_to_end_workflow.py \
 如需显式授权发布：
 
 ```bash
-python scripts/run_end_to_end_workflow.py \
+python scripts/etf_ops.py workflow run \
   --start-date 2025-12-01 \
   --end-date 2026-03-24 \
   --publish \
@@ -202,14 +201,34 @@ python scripts/run_end_to_end_workflow.py \
 ### 12. 本地自动化包装入口（Local Workflow Automation Wrapper）
 
 ```bash
-python scripts/run_workflow_automation.py -- --preflight-only
-python scripts/run_workflow_automation.py --workdir /tmp/workflow_job -- --start-date 2025-12-01 --end-date 2026-03-24
+python scripts/etf_ops.py automation run -- --preflight-only
+python scripts/etf_ops.py automation run --workdir /tmp/workflow_job -- --start-date 2025-12-01 --end-date 2026-03-24
 ```
 
 说明：
 - wrapper 通过真实子进程调用 `scripts/run_end_to_end_workflow.py`，不复制业务编排逻辑
 - `--workdir` 控制 runner 进程的工作目录（cwd）；当 `workdir != repo root` 时，会自动准备 `config -> <repo>/config` 符号链接，保证配置解析路径一致
 - `--` 后面的参数会原样透传给 runner（例如 `--preflight-only`、`--fail-on-blocked`、`--publish` 等）
+
+### 13. 快速查看最近一次工作流状态
+
+```bash
+python scripts/etf_ops.py status latest
+python scripts/etf_ops.py status latest --json
+python scripts/etf_ops.py status latest --workdir /tmp/workflow_job --json
+```
+
+说明：
+- `status latest` 默认读取当前工作目录下的 `reports/workflow/**` 产物
+- 当自动化运行使用 `python scripts/etf_ops.py automation run --workdir <dir> ...` 时，状态查询应使用同一个 `<dir>`：`python scripts/etf_ops.py status latest --workdir <dir>`
+- 状态读取优先级：`reports/workflow/automation/latest_run.json`，不存在时回退到 `reports/workflow/end_to_end_workflow_summary.json`
+
+### 14. 旧脚本兼容入口（保留）
+
+以下脚本仍可继续使用，当前作为兼容入口保留，`--help` 会提示迁移到统一入口：
+- `python scripts/run_end_to_end_workflow.py ...`
+- `python scripts/run_workflow_automation.py ...`
+- `python scripts/run_research_governance_pipeline.py ...`
 
 自动化产物目录（固定，相对 `--workdir` 解析；未显式传 `--workdir` 时等于 repo root）：
 - `reports/workflow/automation/run_history.jsonl`：历史运行索引（append-only）

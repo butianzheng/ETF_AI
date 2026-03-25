@@ -300,11 +300,11 @@
 
 ## 2026-03-25 ETF Ops 单一总入口 CLI
 
-### 执行清单（立项）
-- [ ] Task 1：新增总入口 CLI 骨架、共享 adapter 与命令树
-- [ ] Task 2：落地 `status latest` 读取、归一化与输出
-- [ ] Task 3：旧脚本薄兼容层与共享 adapter 收敛
-- [ ] Task 4：README / tasks 更新与最终聚焦回归
+### 执行清单（Task 1-4）
+- [x] Task 1：新增总入口 CLI 骨架、共享 adapter 与命令树
+- [x] Task 2：落地 `status latest` 读取、归一化与输出
+- [x] Task 3：旧脚本薄兼容层与共享 adapter 收敛
+- [x] Task 4：README / tasks 更新与最终聚焦回归
 
 ### 规划产物
 
@@ -315,6 +315,30 @@
 
 - Spec review：已通过
 - Plan review：已通过
+
+### Task 1/2/3 完成与验证（事实记录）
+
+- Task 1 提交：`fc5da1a`、`9396357`、`36ec0f4`
+- Task 1 spec review：通过
+- Task 1 code review：修复后通过
+- Task 1 fresh 验证：`pytest tests/test_etf_ops_cli.py -q` -> `11 passed in 0.43s`
+
+- Task 2 提交：`6a5abec`、`9a1d3d5`、`b5a2333`
+- Task 2 spec review：通过
+- Task 2 code review：修复后通过
+- Task 2 fresh 验证：`pytest tests/test_etf_ops_status.py -q` -> `9 passed in 0.48s`
+
+- Task 3 提交：`136c295`、`aae1987`
+- Task 3 spec review：通过
+- Task 3 code review：修复后通过
+- Task 3 fresh 验证：`pytest tests/test_etf_ops_legacy_compat.py -q` -> `13 passed in 0.75s`
+- Task 3 extra regression：`pytest tests/test_end_to_end_workflow_runner.py tests/test_workflow_automation_runner.py tests/test_research_governance_pipeline.py -q` -> `46 passed in 0.98s`
+
+### Task 4 最终聚焦回归（本任务执行）
+
+- 命令：`pytest tests/test_etf_ops_cli.py tests/test_etf_ops_status.py tests/test_etf_ops_legacy_compat.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_workflow_automation.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q`
+- 结果：通过（`99 passed in 4.06s`）
+- 全量回归：`pytest -q` 通过（`215 passed in 5.70s`）
 
 ## 下一步行动（切到后续阶段建议）
 
