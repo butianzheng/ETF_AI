@@ -20,6 +20,23 @@ class WorkflowContractError(ValueError):
 
 
 _CONTRACT_KEYS = ("run_id", "workflow_manifest", "workflow_status", "publish_executed")
+_ATTENTION_TYPES_ALLOWED = ("automation_contract_error", "workflow_blocked", "workflow_failed")
+
+
+def _normalize_bool(value: Any, *, default: bool = False, field_name: str = "bool") -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("true", "1", "yes"):
+            return True
+        if lowered in ("false", "0", "no"):
+            return False
+    raise WorkflowContractError(f"invalid {field_name} value: {value!r}")
 
 
 def generate_automation_run_id(now: datetime | None = None) -> str:
@@ -50,16 +67,22 @@ def parse_workflow_stdout_contract(stdout: str) -> dict[str, Any]:
     if missing:
         raise WorkflowContractError(f"runner stdout contract missing keys: {', '.join(missing)}")
 
-    run_id = extracted.get("run_id") or None
-    workflow_manifest = extracted.get("workflow_manifest") or None
+    run_id = extracted.get("run_id") or ""
+    if not run_id:
+        raise WorkflowContractError("runner stdout contract empty run_id")
+
+    workflow_manifest = extracted.get("workflow_manifest") or ""
+    if not workflow_manifest:
+        raise WorkflowContractError("runner stdout contract empty workflow_manifest")
+
     workflow_status = extracted.get("workflow_status") or ""
-    publish_raw = (extracted.get("publish_executed") or "").strip().lower()
-    if publish_raw in ("true", "1", "yes"):
-        publish_executed = True
-    elif publish_raw in ("false", "0", "no"):
-        publish_executed = False
-    else:
-        raise WorkflowContractError(f"invalid publish_executed value: {extracted.get('publish_executed')!r}")
+    if not workflow_status:
+        raise WorkflowContractError("runner stdout contract empty workflow_status")
+
+    publish_executed = _normalize_bool(
+        extracted.get("publish_executed"),
+        field_name="publish_executed",
+    )
 
     return {
         "run_id": run_id,
@@ -78,6 +101,13 @@ def validate_workflow_contract(
 
     if not isinstance(contract, dict) or not isinstance(manifest_payload, dict):
         raise WorkflowContractError("contract/manifest_payload must be dict")
+
+    manifest_path_value = contract.get("workflow_manifest")
+    if not isinstance(manifest_path_value, str) or not manifest_path_value.strip():
+        raise WorkflowContractError("runner contract missing workflow_manifest")
+    manifest_path = Path(manifest_path_value)
+    if not manifest_path.exists():
+        raise WorkflowContractError(f"workflow_manifest path does not exist: {manifest_path_value}")
 
     contract_run_id = contract.get("run_id")
     manifest_run_id = manifest_payload.get("run_id")
@@ -141,9 +171,14 @@ def build_automation_record(
         "run_id": contract.get("run_id", manifest_payload.get("run_id")),
         "workflow_manifest": contract.get("workflow_manifest", manifest_payload.get("workflow_manifest_path")),
         "workflow_status": contract.get("workflow_status", manifest_payload.get("status")),
-        "publish_executed": contract.get(
-            "publish_executed",
-            bool((manifest_payload.get("publish_result") or {}).get("executed")),
+        "publish_executed": (
+            _normalize_bool(contract.get("publish_executed"), field_name="publish_executed")
+            if "publish_executed" in contract
+            else _normalize_bool(
+                (manifest_payload.get("publish_result") or {}).get("executed"),
+                default=False,
+                field_name="publish_executed",
+            )
         ),
         "manifest_exit_code": manifest_payload.get("exit_code"),
         "failed_step": manifest_payload.get("failed_step"),
@@ -175,9 +210,6 @@ def write_runner_logs(
 
 def should_update_attention(record: dict[str, Any]) -> bool:
     attention_type = record.get("attention_type")
-    if attention_type:
-        return True
-
     status = record.get("workflow_status")
     if status in ("succeeded", "preflight_only"):
         return False
@@ -185,7 +217,9 @@ def should_update_attention(record: dict[str, Any]) -> bool:
         return True
 
     failed_step = record.get("failed_step")
-    return failed_step == "automation_contract_error"
+    if failed_step == "automation_contract_error":
+        return True
+    return attention_type == "automation_contract_error"
 
 
 def _default_suggested_next_action(attention_type: str, record: dict[str, Any]) -> str:
@@ -204,13 +238,18 @@ def _default_suggested_next_action(attention_type: str, record: dict[str, Any]) 
 def _build_attention_payload(record: dict[str, Any]) -> dict[str, Any]:
     workflow_status = record.get("workflow_status")
     attention_type = record.get("attention_type")
-    if not attention_type:
-        if workflow_status == "blocked":
-            attention_type = "workflow_blocked"
-        elif workflow_status == "failed":
-            attention_type = "workflow_failed"
-        else:
-            attention_type = "automation_contract_error" if record.get("failed_step") == "automation_contract_error" else "workflow_attention"
+    if attention_type not in _ATTENTION_TYPES_ALLOWED and attention_type is not None:
+        attention_type = None
+    if record.get("failed_step") == "automation_contract_error":
+        attention_type = "automation_contract_error"
+    elif workflow_status == "blocked":
+        attention_type = "workflow_blocked"
+    elif workflow_status == "failed":
+        attention_type = "workflow_failed"
+    elif attention_type == "automation_contract_error":
+        attention_type = "automation_contract_error"
+    else:
+        raise WorkflowContractError(f"cannot infer attention_type from record: workflow_status={workflow_status!r}")
 
     suggested_next_action = record.get("suggested_next_action") or _default_suggested_next_action(attention_type, record)
 
@@ -251,6 +290,11 @@ def render_attention_markdown(record: dict[str, Any]) -> str:
         f"failed_step: {attention.get('failed_step')}",
         f"blocked_reasons: {blocked_text}",
         "",
+        f"workflow_manifest: {attention.get('workflow_manifest')}",
+        f"health_check_report_path: {attention.get('health_check_report_path')}",
+        f"post_publish_health_check_report_path: {attention.get('post_publish_health_check_report_path')}",
+        f"research_governance_pipeline_summary_path: {attention.get('research_governance_pipeline_summary_path')}",
+        "",
         f"runner_stdout: {attention.get('runner_stdout_path')}",
         f"runner_stderr: {attention.get('runner_stderr_path')}",
         "",
@@ -279,7 +323,8 @@ def write_automation_outputs(record: dict[str, Any], *, root: Path) -> dict[str,
 
     latest_run_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    if should_update_attention(record):
+    updated_attention = should_update_attention(record)
+    if updated_attention:
         attention_payload = _build_attention_payload(record)
         latest_attention_json_path.write_text(
             json.dumps(attention_payload, ensure_ascii=False, indent=2),
@@ -287,12 +332,10 @@ def write_automation_outputs(record: dict[str, Any], *, root: Path) -> dict[str,
         )
         latest_attention_md_path.write_text(render_attention_markdown(record), encoding="utf-8")
 
-    out: dict[str, str] = {
+    out: dict[str, Any] = {
         "run_history_path": str(run_history_path),
         "latest_run_path": str(latest_run_path),
+        "latest_attention_json_path": str(latest_attention_json_path) if updated_attention else None,
+        "latest_attention_md_path": str(latest_attention_md_path) if updated_attention else None,
     }
-    if latest_attention_json_path.exists():
-        out["latest_attention_json_path"] = str(latest_attention_json_path)
-    if latest_attention_md_path.exists():
-        out["latest_attention_md_path"] = str(latest_attention_md_path)
     return out
