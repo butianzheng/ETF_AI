@@ -217,13 +217,22 @@ python scripts/etf_ops.py automation run --workdir /tmp/workflow_job -- --start-
 python scripts/etf_ops.py status latest
 python scripts/etf_ops.py status latest --json
 python scripts/etf_ops.py status latest --workdir /tmp/workflow_job --json
+
+python scripts/etf_ops.py status runs
+python scripts/etf_ops.py status runs --limit 50 --workdir /tmp/workflow_job
+python scripts/etf_ops.py status runs --json
+
+python scripts/etf_ops.py status show --run-id auto-20260324-001
+python scripts/etf_ops.py status show --run-id 20260324T101530Z --workdir /tmp/workflow_job --json
 ```
 
 说明：
-- `status latest` 默认读取当前工作目录下的 `reports/workflow/**` 产物
-- 若在 repo 外执行了 `automation run`，建议显式传 `--workdir <dir>` 固定产物目录；后续查询状态时也传同一个 `--workdir <dir>`，否则可能读取到错误目录
-- 当自动化运行使用 `python scripts/etf_ops.py automation run --workdir <dir> ...` 时，状态查询应使用同一个 `<dir>`：`python scripts/etf_ops.py status latest --workdir <dir>`
-- 状态读取优先级：`reports/workflow/automation/latest_run.json`，不存在时回退到 `reports/workflow/end_to_end_workflow_summary.json`
+- `status latest` 默认读取当前工作目录下的 `reports/workflow/**` 产物；若命中 `latest_run.json` 且包含 `artifact_index_path`，会优先消费对应 `artifact_index.json`（而不是直接读取 legacy 字段）
+- `status runs` 从 `reports/workflow/automation/run_history.jsonl` 列出历史运行摘要；若某条记录带有 `artifact_index_path` 且索引文件可用，摘要字段优先来自 `artifact_index.json`
+- `status show --run-id <id>` 支持 `automation_run_id` 或 workflow `run_id`，会优先走 `artifact_index_path -> artifact_index.json`，索引缺失时才回退 legacy 记录重建详情
+- `artifact_index.json` 是每次运行的事实快照；`artifact_index_path` 是写在 `latest_run.json`/`run_history.jsonl` 里的索引指针（相对 `effective_workdir` 解析）；`effective_workdir` 是该次运行最终生效的产物根目录
+- 当 `automation run --workdir <dir>` 发生写入回退（`outputs_fallback_used=true`）并落到 repo root 时，状态查询应指向最终 `effective_workdir`（通常为 repo root），而不是原始请求的 `<dir>`
+- 实务上建议：运行后先看 `status latest --json` 返回里的 `effective_workdir`，再基于该目录执行 `status runs/status show`
 
 ### 14. 旧脚本兼容入口（保留）
 

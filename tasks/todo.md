@@ -354,10 +354,10 @@
 ### 执行清单（立项）
 - [x] 完成 design spec
 - [x] 完成 implementation plan
-- [ ] Task 1：新增 artifact index helper 与 legacy fallback/query helper
-- [ ] Task 2：wrapper 集成 artifact index 写盘与 pointer 回填
-- [ ] Task 3：统一 CLI 增加 `status runs` / `status show`
-- [ ] Task 4：README / 任务跟踪 / 最终聚焦回归
+- [x] Task 1：新增 artifact index helper 与 legacy fallback/query helper
+- [x] Task 2：wrapper 集成 artifact index 写盘与 pointer 回填
+- [x] Task 3：统一 CLI 增加 `status runs` / `status show`
+- [x] Task 4：README / 任务跟踪 / 最终聚焦回归
 
 ### 规划产物
 
@@ -375,6 +375,26 @@
 - 保留 `latest_run.json` / `run_history.jsonl` current schema，只额外新增 `artifact_index_path`
 - 新索引路径统一相对 `effective_workdir` 解析
 - 若 automation 输出发生 fallback，artifact index 与 latest/history/attention 必须同根输出
+
+### 完成结果
+
+- Task 1 提交：`3bd7e33`、`c18b6a8`、`b14d3ad`
+- Task 1 spec review：通过
+- Task 1 code review：通过
+- Task 1 fresh 验证：`python3 -m pytest tests/test_workflow_artifact_index.py -q` 通过（`14 passed in 0.52s`）
+- Task 2 提交：`3b1331e`、`0571d0c`、`fa445fd`
+- Task 2 spec review：通过
+- Task 2 code review：修复后通过
+- Task 2 fresh 验证：`python3 -m pytest tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_workflow_artifact_index.py tests/test_etf_ops_status.py -q` 通过（`45 passed in 4.12s`）
+- Task 3 提交：`f5a928c`、`00624ac`、`00e4a5a`、`4d047df`
+- Task 3 spec review：回修后通过
+- Task 3 code review：多轮回修后通过
+- Task 3 fresh 验证：`python3 -m pytest tests/test_workflow_artifact_index.py tests/test_etf_ops_cli.py tests/test_etf_ops_status.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py -q` 通过（`78 passed in 29.28s`）
+- Task 4 提交：`d4aef1c`、`38dc482`
+- Task 4 spec review：修复后通过
+- Task 4 code review：修复后通过
+- Task 4 聚焦回归：`python3 -m pytest tests/test_workflow_artifact_index.py tests/test_workflow_automation.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_etf_ops_cli.py tests/test_etf_ops_status.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`128 passed in 29.48s`）
+- Task 4 全量回归：`python3 -m pytest -q` 通过（`257 passed in 31.65s`）
 
 ## 2026-03-25 Local Workflow Automation Wrapper
 
