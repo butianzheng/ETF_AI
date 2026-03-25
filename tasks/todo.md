@@ -335,7 +335,7 @@
 - Task 3 spec review：修复后通过
 - Task 3 code review：修复后通过
 - Task 3 fresh 验证：`pytest tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_end_to_end_workflow_runner.py -q` 通过（`34 passed in 3.29s`）
-- Task 4 提交链：`834dfd5`、`6aa9912`；核心文档收口提交以此为准，后续任务跟踪自更新提交不在此行穷举，以 `git log` 为准
+- Task 4 提交链：`834dfd5`、`6aa9912`、`6bc65e1`；核心文档收口提交以此为准，后续任务跟踪自更新提交不在此行穷举，以 `git log` 为准
 - 审查状态：Task 1/2/3 已完成双审查（spec + code），Task 4 文档一致性与任务跟踪自审通过
 - Task 4 必跑聚焦回归：`pytest tests/test_workflow_automation.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_workflow_preflight.py tests/test_workflow_manifest.py -q` 通过（`57 passed`）
 - Task 4 扩展回归：`pytest tests/test_workflow_preflight.py tests/test_workflow_manifest.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_workflow_automation.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py tests/test_pipeline_e2e.py -q` 通过（`78 passed`）
