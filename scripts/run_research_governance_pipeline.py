@@ -92,7 +92,8 @@ def run_research_governance_entrypoint(argv: list[str] | None = None) -> int:
 def main(argv: list[str] | None = None) -> int:
     from src.cli.commands import run_research_governance_command
 
-    return int(run_research_governance_command([] if argv is None else argv))
+    effective_argv = sys.argv[1:] if argv is None else argv
+    return int(run_research_governance_command(effective_argv, entrypoint=run_research_governance_entrypoint))
 
 
 if __name__ == "__main__":

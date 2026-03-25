@@ -283,7 +283,8 @@ def run_workflow_automation_entrypoint(argv: list[str] | None = None) -> int:
 def main(argv: list[str] | None = None) -> int:
     from src.cli.commands import run_automation_command
 
-    return int(run_automation_command([] if argv is None else argv))
+    effective_argv = sys.argv[1:] if argv is None else argv
+    return int(run_automation_command(effective_argv, entrypoint=run_workflow_automation_entrypoint))
 
 
 if __name__ == "__main__":
