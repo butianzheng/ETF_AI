@@ -63,6 +63,295 @@ def test_workflow_automation_runner_writes_latest_run_for_success(tmp_path, monk
     assert kwargs["cwd"] == str(tmp_path)
 
 
+def test_workflow_automation_runner_writes_artifact_index_and_backfills_pointer(tmp_path, monkeypatch):
+    import scripts.run_workflow_automation as cli
+
+    _write_manifest(tmp_path, status="preflight_only", exit_code=0)
+
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *args, **kwargs: CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout=(
+                "run_id=20260325T010203Z-abcd1234\n"
+                "workflow_manifest=reports/workflow/runs/20260325T010203Z-abcd1234/workflow_manifest.json\n"
+                "workflow_status=preflight_only\n"
+                "publish_executed=false\n"
+            ),
+            stderr="",
+        ),
+    )
+
+    assert cli.main(["--workdir", str(tmp_path), "--", "--preflight-only"]) == 0
+
+    latest = json.loads((tmp_path / "reports/workflow/automation/latest_run.json").read_text(encoding="utf-8"))
+    assert "artifact_index_path" in latest
+
+    artifact_index = tmp_path / str(latest["artifact_index_path"])
+    assert artifact_index.exists()
+    payload = json.loads(artifact_index.read_text(encoding="utf-8"))
+    assert payload["manifest_path"] == "reports/workflow/runs/20260325T010203Z-abcd1234/workflow_manifest.json"
+    assert payload["effective_workdir"] == str(tmp_path)
+
+
+def test_workflow_automation_runner_rebuilds_artifact_index_after_primary_write_failure(tmp_path, monkeypatch):
+    import scripts.run_workflow_automation as cli
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True, exist_ok=True)
+    (repo_root / "config").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(cli, "PROJECT_ROOT", repo_root)
+    monkeypatch.setattr(cli, "RUNNER_SCRIPT", (repo_root / "scripts" / "run_end_to_end_workflow.py").resolve())
+
+    workdir = tmp_path / "wd"
+    workdir.mkdir(parents=True, exist_ok=True)
+    manifest_path = _write_manifest(workdir, status="preflight_only", exit_code=0)
+
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *args, **kwargs: CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout=(
+                "run_id=20260325T010203Z-abcd1234\n"
+                f"workflow_manifest={manifest_path.relative_to(workdir)}\n"
+                "workflow_status=preflight_only\n"
+                "publish_executed=false\n"
+            ),
+            stderr="",
+        ),
+    )
+
+    real_write = cli.write_artifact_index
+    calls = {"count": 0}
+
+    def _flaky_write(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise OSError("primary root write failed")
+        return real_write(*args, **kwargs)
+
+    monkeypatch.setattr(cli, "write_artifact_index", _flaky_write)
+
+    assert cli.main(["--workdir", str(workdir), "--", "--preflight-only"]) == 0
+
+    latest = json.loads((repo_root / "reports/workflow/automation/latest_run.json").read_text(encoding="utf-8"))
+    assert latest["outputs_fallback_used"] is True
+    assert latest["effective_workdir"] == str(repo_root.resolve())
+
+    artifact_index = repo_root / str(latest["artifact_index_path"])
+    assert artifact_index.exists()
+
+
+def test_workflow_automation_runner_returns_one_when_final_artifact_index_write_fails(tmp_path, monkeypatch):
+    import scripts.run_workflow_automation as cli
+
+    _write_manifest(tmp_path, status="preflight_only", exit_code=0)
+
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *args, **kwargs: CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout=(
+                "run_id=20260325T010203Z-abcd1234\n"
+                "workflow_manifest=reports/workflow/runs/20260325T010203Z-abcd1234/workflow_manifest.json\n"
+                "workflow_status=preflight_only\n"
+                "publish_executed=false\n"
+            ),
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(cli, "write_artifact_index", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("index failed")))
+
+    assert cli.main(["--workdir", str(tmp_path), "--", "--preflight-only"]) == 1
+    latest_run = json.loads((tmp_path / "reports/workflow/automation/latest_run.json").read_text(encoding="utf-8"))
+    attention = json.loads((tmp_path / "reports/workflow/automation/latest_attention.json").read_text(encoding="utf-8"))
+    assert latest_run["failed_step"] == "automation_contract_error"
+    assert "index failed" in str(latest_run["suggested_next_action"])
+    assert attention["attention_type"] == "automation_contract_error"
+
+
+def test_outputs_failure_overwrites_latest_and_history_without_artifact_index_pointer(tmp_path, monkeypatch):
+    import scripts.run_workflow_automation as cli
+
+    _write_manifest(tmp_path, status="preflight_only", exit_code=0)
+
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *args, **kwargs: CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout=(
+                "run_id=20260325T010203Z-abcd1234\n"
+                "workflow_manifest=reports/workflow/runs/20260325T010203Z-abcd1234/workflow_manifest.json\n"
+                "workflow_status=preflight_only\n"
+                "publish_executed=false\n"
+            ),
+            stderr="",
+        ),
+    )
+
+    real_write_latest = cli._write_latest_run_json
+    calls = {"count": 0}
+
+    def _flaky_latest(record, *, path: Path):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise OSError("latest write failed")
+        return real_write_latest(record, path=path)
+
+    monkeypatch.setattr(cli, "_write_latest_run_json", _flaky_latest)
+
+    assert cli.main(["--workdir", str(tmp_path), "--", "--preflight-only"]) == 1
+
+    root = tmp_path / "reports" / "workflow" / "automation"
+    latest = json.loads((root / "latest_run.json").read_text(encoding="utf-8"))
+    assert latest["failed_step"] == "automation_contract_error"
+    assert "artifact_index_path" not in latest
+
+    lines = [line for line in (root / "run_history.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 1
+    history = json.loads(lines[0])
+    assert history["automation_run_id"] == latest["automation_run_id"]
+    assert history["failed_step"] == "automation_contract_error"
+    assert "artifact_index_path" not in history
+
+    # Query layer must not be redirected to the stale per-run index.
+    from src.workflow.automation_index import find_run_view, load_latest_run_view
+
+    view = load_latest_run_view(tmp_path)
+    assert view is not None
+    assert view["source"] != "artifact_index"
+
+    by_id = find_run_view(tmp_path, run_id=str(latest["automation_run_id"]))
+    assert by_id is not None
+    assert by_id["source"] != "artifact_index"
+
+
+def test_repo_nested_workdir_fallback_error_record_does_not_double_rebase_paths(tmp_path, monkeypatch):
+    import scripts.run_workflow_automation as cli
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True, exist_ok=True)
+    (repo_root / "config").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(cli, "PROJECT_ROOT", repo_root)
+    monkeypatch.setattr(cli, "RUNNER_SCRIPT", (repo_root / "scripts" / "run_end_to_end_workflow.py").resolve())
+
+    workdir = repo_root / "subdir"
+    workdir.mkdir(parents=True, exist_ok=True)
+    manifest_path = _write_manifest(workdir, status="preflight_only", exit_code=0)
+
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *args, **kwargs: CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout=(
+                "run_id=20260325T010203Z-abcd1234\n"
+                f"workflow_manifest={manifest_path.relative_to(workdir)}\n"
+                "workflow_status=preflight_only\n"
+                "publish_executed=false\n"
+            ),
+            stderr="",
+        ),
+    )
+
+    real_write_index = cli.write_artifact_index
+
+    def _flaky_index(payload, *, effective_workdir):
+        if Path(effective_workdir).resolve() == workdir.resolve():
+            raise OSError("primary index failed")
+        return real_write_index(payload, effective_workdir=effective_workdir)
+
+    monkeypatch.setattr(cli, "write_artifact_index", _flaky_index)
+
+    real_write_latest = cli._write_latest_run_json
+    calls = {"count": 0}
+
+    def _flaky_latest(record, *, path: Path):
+        # Fail the first outputs attempt on repo_root so wrapper writes the error record on the same root.
+        if path.resolve() == (repo_root / "reports" / "workflow" / "automation" / "latest_run.json").resolve():
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise OSError("latest write failed")
+        return real_write_latest(record, path=path)
+
+    monkeypatch.setattr(cli, "_write_latest_run_json", _flaky_latest)
+
+    assert cli.main(["--workdir", str(workdir), "--", "--preflight-only"]) == 1
+
+    latest = json.loads((repo_root / "reports" / "workflow" / "automation" / "latest_run.json").read_text("utf-8"))
+    stdout_path = str(latest["runner_stdout_path"])
+    assert "subdir/subdir" not in stdout_path.replace("\\", "/")
+    assert stdout_path.startswith("subdir/")
+    assert "artifact_index_path" not in latest
+
+
+def test_fallback_root_outputs_failure_does_not_write_error_back_to_original_workdir(tmp_path, monkeypatch):
+    import scripts.run_workflow_automation as cli
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True, exist_ok=True)
+    (repo_root / "config").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(cli, "PROJECT_ROOT", repo_root)
+    monkeypatch.setattr(cli, "RUNNER_SCRIPT", (repo_root / "scripts" / "run_end_to_end_workflow.py").resolve())
+
+    workdir = tmp_path / "wd"
+    workdir.mkdir(parents=True, exist_ok=True)
+    manifest_path = _write_manifest(workdir, status="preflight_only", exit_code=0)
+
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *args, **kwargs: CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout=(
+                "run_id=20260325T010203Z-abcd1234\n"
+                f"workflow_manifest={manifest_path.relative_to(workdir)}\n"
+                "workflow_status=preflight_only\n"
+                "publish_executed=false\n"
+            ),
+            stderr="",
+        ),
+    )
+
+    real_write_index = cli.write_artifact_index
+
+    def _flaky_index_write(payload, *, effective_workdir):
+        if Path(effective_workdir).resolve() == workdir.resolve():
+            raise OSError("primary root index failed")
+        return real_write_index(payload, effective_workdir=effective_workdir)
+
+    monkeypatch.setattr(cli, "write_artifact_index", _flaky_index_write)
+
+    real_write_latest = cli._write_latest_run_json
+
+    def _flaky_latest(record, *, path: Path):
+        if path.resolve() == (repo_root / "reports" / "workflow" / "automation" / "latest_run.json").resolve():
+            raise OSError("fallback outputs failed")
+        return real_write_latest(record, path=path)
+
+    monkeypatch.setattr(cli, "_write_latest_run_json", _flaky_latest)
+
+    # Index lands under repo_root, but outputs fail there; wrapper must not write error outputs back to workdir.
+    assert cli.main(["--workdir", str(workdir), "--", "--preflight-only"]) == 1
+
+    assert not (workdir / "reports" / "workflow" / "automation" / "latest_run.json").exists()
+    assert not (workdir / "reports" / "workflow" / "automation" / "latest_attention.json").exists()
+
+    indexes = list((repo_root / "reports" / "workflow" / "automation" / "runs").glob("*/artifact_index.json"))
+    assert indexes
+    assert not (repo_root / "reports" / "workflow" / "automation" / "latest_run.json").exists()
+
+
 def test_workflow_automation_runner_returns_one_and_writes_attention_on_contract_error(tmp_path, monkeypatch):
     import scripts.run_workflow_automation as cli
 
@@ -434,7 +723,7 @@ def test_manifest_read_error_keeps_exception_message_in_attention(tmp_path, monk
     assert "Expecting" in attention["suggested_next_action"] or "JSON" in attention["suggested_next_action"]
 
 
-def test_write_automation_outputs_failure_falls_back_to_repo_root_outputs(tmp_path, monkeypatch):
+def test_write_automation_outputs_failure_does_not_fallback_after_index_written(tmp_path, monkeypatch):
     import scripts.run_workflow_automation as cli
 
     repo_root = tmp_path / "repo"
@@ -464,15 +753,19 @@ def test_write_automation_outputs_failure_falls_back_to_repo_root_outputs(tmp_pa
         ),
     )
 
-    from src.workflow.automation import write_automation_outputs as real_write
+    real_write_latest = cli._write_latest_run_json
 
-    def _write(record, *, root: Path):
-        if root == workdir / "reports" / "workflow" / "automation":
+    def _flaky_latest(record, *, path: Path):
+        if path.resolve() == (workdir / "reports" / "workflow" / "automation" / "latest_run.json").resolve():
             raise OSError("workdir reports not writable")
-        return real_write(record, root=root)
+        return real_write_latest(record, path=path)
 
-    monkeypatch.setattr(cli, "write_automation_outputs", _write)
+    monkeypatch.setattr(cli, "_write_latest_run_json", _flaky_latest)
 
-    assert cli.main(["--workdir", str(workdir), "--", "--preflight-only"]) == 0
-    # Fallback should be under repo_root.
-    assert (repo_root / "reports" / "workflow" / "automation" / "latest_run.json").exists()
+    # Index is written to the primary root before outputs. Once index exists, outputs must not be written
+    # to a different root, so wrapper returns 1 instead of falling back.
+    assert cli.main(["--workdir", str(workdir), "--", "--preflight-only"]) == 1
+
+    indexes = list((workdir / "reports" / "workflow" / "automation" / "runs").glob("*/artifact_index.json"))
+    assert indexes
+    assert not (repo_root / "reports" / "workflow" / "automation" / "latest_run.json").exists()

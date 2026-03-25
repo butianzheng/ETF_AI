@@ -55,6 +55,9 @@ def test_workflow_automation_wrapper_cli_smoke_failed_then_success_retains_atten
     first_run = json.loads(latest_run_json.read_text(encoding="utf-8"))
     failed_automation_run_id = first_run["automation_run_id"]
     assert first_run["wrapper_exit_code"] == 1
+    assert "artifact_index_path" in first_run
+    first_index_path = _resolve_from_workdir(str(first_run["artifact_index_path"]), workdir=workdir)
+    assert first_index_path.exists()
     assert first_attention["automation_run_id"] == failed_automation_run_id
     assert first_run["workflow_manifest"]
     failed_manifest_path = _resolve_from_workdir(str(first_run["workflow_manifest"]), workdir=workdir)
@@ -78,6 +81,9 @@ def test_workflow_automation_wrapper_cli_smoke_failed_then_success_retains_atten
     history_lines = [line for line in run_history_jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
 
     assert second_run["wrapper_exit_code"] == 0
+    assert "artifact_index_path" in second_run
+    second_index_path = _resolve_from_workdir(str(second_run["artifact_index_path"]), workdir=workdir)
+    assert second_index_path.exists()
     assert len(history_lines) == 2
     assert retained_attention["automation_run_id"] == failed_automation_run_id
     assert second_run["automation_run_id"] != failed_automation_run_id
@@ -90,6 +96,9 @@ def test_workflow_automation_wrapper_cli_smoke_failed_then_success_retains_atten
         assert item["workflow_manifest"]
         manifest_path = _resolve_from_workdir(str(item["workflow_manifest"]), workdir=workdir)
         assert manifest_path.exists()
+        assert "artifact_index_path" in item
+        index_path = _resolve_from_workdir(str(item["artifact_index_path"]), workdir=workdir)
+        assert index_path.exists()
 
     stdout_path = _resolve_from_workdir(str(retained_attention["runner_stdout_path"]), workdir=workdir)
     stderr_path = _resolve_from_workdir(str(retained_attention["runner_stderr_path"]), workdir=workdir)
