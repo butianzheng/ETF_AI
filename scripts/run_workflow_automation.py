@@ -118,7 +118,8 @@ def main(argv: list[str] | None = None) -> int:
     runner_command = [sys.executable, str(RUNNER_SCRIPT), *runner_args]
 
     # We always try to write a record (history/latest/attention) for the wrapper run.
-    # If `--workdir` cannot be prepared, we fall back to repo_root for automation outputs.
+    # If `--workdir` cannot be prepared (mkdir/config symlink), we fall back to repo_root for
+    # automation outputs and skip running the runner.
     workdir = requested_workdir
     prep_error: str | None = None
     skip_runner = False
@@ -135,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
             _ensure_workdir_config_symlink(workdir=workdir, repo_root=repo_root)
         except Exception as e:
             prep_error = f"config symlink preparation failed: {_format_exception(e)}"
+            workdir = repo_root
             skip_runner = True
 
     automation_root = workdir / "reports" / "workflow" / "automation"
@@ -258,9 +260,19 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         write_automation_outputs(record, root=automation_root)
-    except Exception:
-        # Wrapper self-failure should return 1 (but keep runner_process_exit_code in record).
-        return 1
+    except Exception as e:
+        # Best-effort fallback: if workdir reports are not writable, try repo_root so the
+        # wrapper run is still discoverable.
+        fallback_root = repo_root / "reports" / "workflow" / "automation"
+        if fallback_root.resolve() == automation_root.resolve():
+            return 1
+        try:
+            record["effective_workdir"] = str(repo_root)
+            record["outputs_fallback_used"] = True
+            record["outputs_write_error"] = _format_exception(e)
+            write_automation_outputs(record, root=fallback_root)
+        except Exception:
+            return 1
 
     return int(wrapper_exit_code)
 

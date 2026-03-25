@@ -272,12 +272,20 @@ def test_workdir_mkdir_failure_still_writes_latest_run_history_and_attention(tmp
     assert (root / "latest_run.json").exists()
     assert (root / "run_history.jsonl").exists()
     assert (root / "latest_attention.json").exists()
+    latest = json.loads((root / "latest_run.json").read_text("utf-8"))
+    assert latest["requested_workdir"] == str(workdir)
+    assert latest["effective_workdir"] == str(tmp_path.resolve())
 
 
 def test_config_symlink_failure_still_writes_latest_run_history_and_attention(tmp_path, monkeypatch):
     import scripts.run_workflow_automation as cli
 
-    workdir = tmp_path / "wd"
+    # Isolate PROJECT_ROOT to tmp_path so fallback writes stay inside tmp_path.
+    monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(cli, "RUNNER_SCRIPT", (tmp_path / "scripts" / "run_end_to_end_workflow.py").resolve())
+    (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+
+    workdir = (tmp_path / "wd").resolve()
     workdir.mkdir(parents=True, exist_ok=True)
 
     orig_symlink_to = Path.symlink_to
@@ -291,10 +299,13 @@ def test_config_symlink_failure_still_writes_latest_run_history_and_attention(tm
     monkeypatch.setattr(cli.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError()))
 
     assert cli.main(["--workdir", str(workdir), "--", "--preflight-only"]) == 1
-    root = workdir / "reports" / "workflow" / "automation"
+    root = tmp_path / "reports" / "workflow" / "automation"
     assert (root / "latest_run.json").exists()
     assert (root / "run_history.jsonl").exists()
     assert (root / "latest_attention.json").exists()
+    latest = json.loads((root / "latest_run.json").read_text("utf-8"))
+    assert latest["requested_workdir"] == str(workdir)
+    assert latest["effective_workdir"] == str(tmp_path.resolve())
 
 
 def test_write_runner_logs_failure_is_captured_and_still_writes_latest_and_attention(tmp_path, monkeypatch):
@@ -386,10 +397,10 @@ def test_negative_runner_exit_code_is_mapped_to_non_negative_wrapper_exit_code(t
     )
 
     exit_code = cli.main(["--workdir", str(tmp_path), "--", "--preflight-only"])
-    assert exit_code >= 0
+    assert exit_code == 137
     latest = json.loads((tmp_path / "reports" / "workflow" / "automation" / "latest_run.json").read_text("utf-8"))
     assert latest["runner_process_exit_code"] == -9
-    assert latest["wrapper_exit_code"] >= 0
+    assert latest["wrapper_exit_code"] == 137
 
 
 def test_manifest_read_error_keeps_exception_message_in_attention(tmp_path, monkeypatch):
@@ -421,3 +432,47 @@ def test_manifest_read_error_keeps_exception_message_in_attention(tmp_path, monk
     )
     assert "suggested_next_action" in attention
     assert "Expecting" in attention["suggested_next_action"] or "JSON" in attention["suggested_next_action"]
+
+
+def test_write_automation_outputs_failure_falls_back_to_repo_root_outputs(tmp_path, monkeypatch):
+    import scripts.run_workflow_automation as cli
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir(parents=True, exist_ok=True)
+    (repo_root / "config").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(cli, "PROJECT_ROOT", repo_root)
+    monkeypatch.setattr(cli, "RUNNER_SCRIPT", (repo_root / "scripts" / "run_end_to_end_workflow.py").resolve())
+
+    workdir = tmp_path / "wd"
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    manifest_path = _write_manifest(workdir, status="preflight_only", exit_code=0)
+
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda *args, **kwargs: CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout=(
+                "run_id=20260325T010203Z-abcd1234\n"
+                f"workflow_manifest={manifest_path.relative_to(workdir)}\n"
+                "workflow_status=preflight_only\n"
+                "publish_executed=false\n"
+            ),
+            stderr="",
+        ),
+    )
+
+    from src.workflow.automation import write_automation_outputs as real_write
+
+    def _write(record, *, root: Path):
+        if root == workdir / "reports" / "workflow" / "automation":
+            raise OSError("workdir reports not writable")
+        return real_write(record, root=root)
+
+    monkeypatch.setattr(cli, "write_automation_outputs", _write)
+
+    assert cli.main(["--workdir", str(workdir), "--", "--preflight-only"]) == 0
+    # Fallback should be under repo_root.
+    assert (repo_root / "reports" / "workflow" / "automation" / "latest_run.json").exists()
