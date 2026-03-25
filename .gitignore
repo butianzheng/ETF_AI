@@ -68,3 +68,4 @@ htmlcov/
 # 其他
 .mypy_cache/
 .ruff_cache/
+.worktrees/
