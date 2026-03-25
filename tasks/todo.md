@@ -256,10 +256,10 @@
 ### 执行清单（立项）
 - [x] 完成设计 spec
 - [x] 完成 implementation plan
-- [ ] Task 1：preflight 辅助模块与失败语义
-- [ ] Task 2：run_id / per-run manifest / legacy summary 兼容
-- [ ] Task 3：自动化 stdout 合同与 runner smoke
-- [ ] Task 4：README / 任务跟踪 / 最终聚焦回归
+- [x] Task 1：preflight 辅助模块与失败语义
+- [x] Task 2：run_id / per-run manifest / legacy summary 兼容
+- [x] Task 3：自动化 stdout 合同与 runner smoke
+- [x] Task 4：更新 README / tasks + 最终聚焦回归 + 提交收口
 
 ### 规划产物
 
@@ -271,12 +271,36 @@
 - Spec review：已通过
 - Plan review：已通过
 
-## 下一步行动
+### Task 1/2/3 完成与验证（事实记录）
 
-1. 按新 plan 执行 Task 1，先落 preflight 与 `--preflight-only`
-2. 执行 Task 2，补齐 `run_id` 与 per-run manifest
-3. 执行 Task 3，锁定自动化 stdout 合同与 runner smoke
-4. 完成 Task 4 后做最终聚焦回归与收口
+- Task 1 提交：`c41f7f0`、`b69b26a`
+- Task 1 spec review：通过
+- Task 1 code review：修复后通过
+- Task 1 fresh 验证：`pytest tests/test_workflow_preflight.py tests/test_end_to_end_workflow_runner.py -q -k "preflight or blocked_stdout_status"` -> `9 passed, 12 deselected in 0.71s`
+
+- Task 2 提交：`f39d1a5`
+- Task 2 spec review：通过
+- Task 2 code review：通过
+- Task 2 fresh 验证：`pytest tests/test_workflow_manifest.py tests/test_end_to_end_workflow_runner.py -q -k "run_id or manifest"` -> `4 passed, 16 deselected in 0.58s`
+
+- Task 3 提交：`a930827`
+- Task 3 spec review：通过
+- Task 3 code review：通过
+- Task 3 fresh 验证：`pytest tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py -q` -> `18 passed in 0.66s`
+
+### Task 4 目标与记录
+
+- 目标：补齐 README（`--preflight-only` 示例、stdout 合同、per-run manifest vs legacy summary、`workflow_status` 枚举值），并同步 `tasks/todo.md` 最终状态
+- 最终聚焦回归：
+  - 命令：`pytest tests/test_workflow_preflight.py tests/test_workflow_manifest.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py tests/test_pipeline_e2e.py -q`
+  - 结果：通过（`47 passed in 1.33s`）
+- Task 4 提交：本次提交（`docs: add workflow runner operationalization plan`）
+
+## 下一步行动（切到后续阶段建议）
+
+1. 在 CI/自动化里解析 stdout 合同，按 `workflow_manifest` 收集 per-run JSON 作为 artifact（避免依赖 legacy summary 覆盖语义）
+2. 将 per-run manifest 接入可观测性与问题定位链路（失败/blocked 的 run_id 可直接定位到对应 manifest 与 health report）
+3. 进入下一阶段：围绕 runner 的稳定运行做工程化（定时触发、artifact 保留策略、告警与人工确认流程）
 
 ## 2026-03-12 项目扫描
 

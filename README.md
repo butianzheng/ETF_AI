@@ -144,6 +144,15 @@ python scripts/run_end_to_end_workflow.py --start-date 2025-12-01 --end-date 202
 - 默认不跑 daily
 - 默认不 publish
 
+仅执行预检（常用于 CI 或快速确认输入参数/目录结构是否可用）：
+
+```bash
+python scripts/run_end_to_end_workflow.py \
+  --start-date 2025-12-01 \
+  --end-date 2026-03-24 \
+  --preflight-only
+```
+
 如需把 daily 纳入同一入口：
 
 ```bash
@@ -173,15 +182,22 @@ python scripts/run_end_to_end_workflow.py \
 - publish 成功后会自动再跑一次 post-publish health check
 
 输出与退出码：
-- workflow summary 固定写到 `reports/workflow/end_to_end_workflow_summary.json`
-- `stdout` 会输出 `publish_executed=true|false`
+- per-run manifest（推荐自动化消费）写到：`reports/workflow/runs/<run_id>/workflow_manifest.json`
+- legacy summary（兼容旧路径，永远覆盖为“最近一次运行”）写到：`reports/workflow/end_to_end_workflow_summary.json`
+- `stdout` 合同（稳定字段，方便 CI 解析）：
+  - `run_id=<run_id>`
+  - `workflow_manifest=<manifest_path>`
+  - `workflow_status=<status>`
+  - `publish_executed=true|false`
+- `workflow_status` 枚举值：
+  - `preflight_only`：仅预检完成（未执行 daily / research-governance / health / publish）
+  - `succeeded`：完整流程成功（未 blocked）
+  - `blocked`：治理结果为 blocked（是否退出码为 2 取决于是否启用 `--fail-on-blocked`）
+  - `failed`：预检失败或任一阶段 fatal error
 - `exit_code=0`：成功，或 `blocked` 但未启用 `--fail-on-blocked`
 - `exit_code=2`：`blocked` 且启用了 `--fail-on-blocked`
 - `exit_code=1`：fatal，包括 `research-governance`、`health check`、`publish`、`post-publish health check`
-- summary 会同时保留：
-  - `health_check_result`（publish 前）
-  - `post_publish_health_check_result`（publish 后，若执行）
-  - `publish_result`
+- manifest / summary JSON 内会同时保留：`health_check_result`（publish 前）、`post_publish_health_check_result`（publish 后，若执行）、`publish_result`
 
 ## 项目结构
 
