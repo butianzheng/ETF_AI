@@ -349,6 +349,33 @@
 2. 将 per-run manifest 接入可观测性与问题定位链路（失败/blocked 的 run_id 可直接定位到对应 manifest 与 health report）
 3. 进入下一阶段：围绕 runner 的稳定运行做工程化（定时触发、artifact 保留策略、告警与人工确认流程）
 
+## 2026-03-25 Workflow Artifact 索引层
+
+### 执行清单（立项）
+- [x] 完成 design spec
+- [x] 完成 implementation plan
+- [ ] Task 1：新增 artifact index helper 与 legacy fallback/query helper
+- [ ] Task 2：wrapper 集成 artifact index 写盘与 pointer 回填
+- [ ] Task 3：统一 CLI 增加 `status runs` / `status show`
+- [ ] Task 4：README / 任务跟踪 / 最终聚焦回归
+
+### 规划产物
+
+- Spec: `docs/superpowers/specs/2026-03-25-workflow-artifact-index-design.md`
+- Plan: `docs/superpowers/plans/2026-03-25-workflow-artifact-index-implementation.md`
+
+### 审查状态
+
+- Spec review：已通过
+- Plan review：已通过
+
+### 当前说明
+
+- 第一版只覆盖 `workflow/automation` 链路
+- 保留 `latest_run.json` / `run_history.jsonl` current schema，只额外新增 `artifact_index_path`
+- 新索引路径统一相对 `effective_workdir` 解析
+- 若 automation 输出发生 fallback，artifact index 与 latest/history/attention 必须同根输出
+
 ## 2026-03-25 Local Workflow Automation Wrapper
 
 ### 执行清单（立项）
