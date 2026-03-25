@@ -337,11 +337,11 @@
 ### Task 4 最终聚焦回归（本任务执行）
 
 - 命令：`pytest tests/test_etf_ops_cli.py tests/test_etf_ops_status.py tests/test_etf_ops_legacy_compat.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_workflow_automation.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q`
-- 结果：通过（`99 passed in 4.06s`）
-- 全量回归：`pytest -q` 通过（`215 passed in 5.70s`）
-- Task 4 提交：待回填（本次 `docs:` 提交 SHA）
-- Task 4 spec review：待回填
-- Task 4 code review：按本轮 3 条问题修复后待复审
+- 结果：通过（`99 passed in 4.97s`）
+- 全量回归：`pytest -q` 通过（`215 passed in 6.97s`）
+- Task 4 提交链：`222da71`、`ba26ea1`；当前任务跟踪收口提交不在此行自指穷举，后续以 `git log -- README.md tasks/todo.md` 为准
+- Task 4 spec review：已通过
+- Task 4 code review：已完成两轮；首轮发现 3 条文档/任务记录问题，次轮仅剩 Task 4 账本待补齐，本次已补齐
 
 ## 下一步行动（切到后续阶段建议）
 
