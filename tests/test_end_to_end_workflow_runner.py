@@ -278,6 +278,23 @@ def test_workflow_runner_returns_one_when_preflight_fails(tmp_path, monkeypatch,
     assert "workflow_status=failed" in stdout
 
 
+def test_workflow_runner_preflight_failed_when_workflow_output_unwritable_is_controlled(
+    tmp_path, monkeypatch, capsys
+):
+    import scripts.run_end_to_end_workflow as cli
+
+    monkeypatch.chdir(tmp_path)
+    # 将 reports 预先占位为文件，使 reports/workflow 无法创建。
+    (tmp_path / "reports").write_text("occupied", encoding="utf-8")
+
+    exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24"])
+
+    stdout = capsys.readouterr().out
+    assert exit_code == 1
+    assert "workflow_status=failed" in stdout
+    assert "workflow_artifact_write=failed" in stdout
+
+
 def test_workflow_runner_blocked_stdout_status_matches_exit_code(tmp_path, monkeypatch, capsys):
     import scripts.run_end_to_end_workflow as cli
 

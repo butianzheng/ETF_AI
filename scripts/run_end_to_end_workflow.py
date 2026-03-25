@@ -122,6 +122,14 @@ def _finalize_workflow_run(payload: dict[str, Any], *, workflow_status: str) -> 
     print(f"publish_executed={'true' if publish_executed else 'false'}")
 
 
+def _print_finalize_write_failure(error: Exception, payload: dict[str, Any], *, workflow_status: str) -> None:
+    print(f"workflow_status={workflow_status}")
+    print("workflow_artifact_write=failed")
+    print(f"workflow_artifact_write_error={type(error).__name__}: {error}")
+    publish_executed = bool(payload.get("publish_result", {}).get("executed"))
+    print(f"publish_executed={'true' if publish_executed else 'false'}")
+
+
 def _research_governance_payload(pipeline_result: dict[str, Any]) -> dict[str, Any]:
     cycle_result = pipeline_result.get("cycle_result")
     decision = getattr(cycle_result, "decision", None)
@@ -259,21 +267,22 @@ def main(argv: list[str] | None = None) -> int:
         health_root=Path("reports/governance/health"),
     )
     if preflight_result["status"] == "failed":
-        _finalize_workflow_run(
-            _failed_summary_payload(
-                run_id=run_id,
-                started_at=started_at,
-                preflight_result=preflight_result,
-                failed_step="preflight",
-                error=RuntimeError("workflow preflight failed"),
-                daily_result=daily_result,
-                research_governance_result=research_governance_result,
-                health_check_result=health_check_result,
-                post_publish_health_check_result=post_publish_health_check_result,
-                publish_result=publish_result,
-            ),
-            workflow_status="failed",
+        failed_payload = _failed_summary_payload(
+            run_id=run_id,
+            started_at=started_at,
+            preflight_result=preflight_result,
+            failed_step="preflight",
+            error=RuntimeError("workflow preflight failed"),
+            daily_result=daily_result,
+            research_governance_result=research_governance_result,
+            health_check_result=health_check_result,
+            post_publish_health_check_result=post_publish_health_check_result,
+            publish_result=publish_result,
         )
+        try:
+            _finalize_workflow_run(failed_payload, workflow_status="failed")
+        except Exception as finalize_error:
+            _print_finalize_write_failure(finalize_error, failed_payload, workflow_status="failed")
         return 1
 
     if args.preflight_only:

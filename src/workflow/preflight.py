@@ -61,6 +61,8 @@ def _check_governance_repository() -> dict[str, str | None]:
     repo: GovernanceRepository | None = None
     try:
         repo = GovernanceRepository()
+        # 轻量只读探测：验证连接与基础查询路径可用，不产生副作用。
+        repo.get_latest()
     except Exception as error:
         return _failed(name, error)
     finally:

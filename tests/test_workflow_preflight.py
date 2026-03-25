@@ -92,3 +92,27 @@ def test_run_workflow_preflight_checks_workflow_and_health_dirs_independently(mo
     check_names = {item["name"] for item in result["checks"]}
     assert check_names >= {"workflow_output_dir", "health_output_dir"}
     assert failed_checks == {"workflow_output_dir"}
+
+
+def test_check_governance_repository_triggers_minimal_access(monkeypatch):
+    import src.workflow.preflight as preflight
+
+    state = {"constructed": False, "queried": False, "closed": False}
+
+    class _FakeRepo:
+        def __init__(self):
+            state["constructed"] = True
+
+        def get_latest(self):
+            state["queried"] = True
+            return None
+
+        def close(self):
+            state["closed"] = True
+
+    monkeypatch.setattr(preflight, "GovernanceRepository", _FakeRepo)
+
+    result = preflight._check_governance_repository()
+
+    assert result == {"name": "governance_repository", "status": "passed", "detail": None}
+    assert state == {"constructed": True, "queried": True, "closed": True}
