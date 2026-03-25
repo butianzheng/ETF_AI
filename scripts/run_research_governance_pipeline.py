@@ -18,7 +18,9 @@ from src.research_candidate_config import load_candidate_specs
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     today = date.today()
     default_start = today - timedelta(days=365)
-    parser = argparse.ArgumentParser(description="执行 Research-To-Governance 统一编排")
+    parser = argparse.ArgumentParser(
+        description="执行 Research-To-Governance 统一编排（兼容入口，推荐改用 `python scripts/etf_ops.py ...`）"
+    )
     parser.add_argument("--start-date", default=default_start.isoformat(), help="开始日期，格式 YYYY-MM-DD")
     parser.add_argument("--end-date", default=today.isoformat(), help="结束日期，格式 YYYY-MM-DD")
     parser.add_argument("--initial-capital", type=float, default=100000.0, help="初始资金")
@@ -41,7 +43,7 @@ def _format_blocked_reasons(blocked_reasons: Any) -> str:
     return str(blocked_reasons)
 
 
-def main(argv: list[str] | None = None) -> int:
+def run_research_governance_entrypoint(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     try:
         result = run_research_governance_pipeline(
@@ -85,6 +87,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"pipeline_summary={pipeline_summary}")
     return int(result.get("exit_code", 0))
+
+
+def main(argv: list[str] | None = None) -> int:
+    from src.cli.commands import run_research_governance_command
+
+    return int(run_research_governance_command([] if argv is None else argv))
 
 
 if __name__ == "__main__":

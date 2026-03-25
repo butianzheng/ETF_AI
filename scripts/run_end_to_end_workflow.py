@@ -27,7 +27,9 @@ from src.workflow.preflight import run_workflow_preflight
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     today = date.today()
     default_start = today - timedelta(days=365)
-    parser = argparse.ArgumentParser(description="执行端到端工作流编排")
+    parser = argparse.ArgumentParser(
+        description="执行端到端工作流编排（兼容入口，推荐改用 `python scripts/etf_ops.py ...`）"
+    )
     parser.add_argument("--start-date", default=default_start.isoformat(), help="开始日期，格式 YYYY-MM-DD")
     parser.add_argument("--end-date", default=today.isoformat(), help="结束日期，格式 YYYY-MM-DD")
     parser.add_argument("--candidate-config", help="研究候选配置文件路径，默认使用 config/research.yaml")
@@ -248,7 +250,7 @@ def _failed_summary_payload(
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def run_workflow_entrypoint(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     run_id = generate_run_id()
     started_at = _iso_utc_now()
@@ -502,6 +504,12 @@ def main(argv: list[str] | None = None) -> int:
     }
     _finalize_workflow_run(summary_payload, workflow_status=summary_payload["status"])
     return blocked_exit_code
+
+
+def main(argv: list[str] | None = None) -> int:
+    from src.cli.commands import run_workflow_command
+
+    return int(run_workflow_command([] if argv is None else argv))
 
 
 if __name__ == "__main__":

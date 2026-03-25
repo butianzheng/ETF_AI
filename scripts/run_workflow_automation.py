@@ -46,7 +46,9 @@ def _iso_utc_now() -> str:
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Local workflow automation wrapper")
+    parser = argparse.ArgumentParser(
+        description="Local workflow automation wrapper（兼容入口，推荐改用 `python scripts/etf_ops.py ...`）"
+    )
     parser.add_argument("--workdir", default=None, help="Runner subprocess working directory (default: repo root)")
     parser.add_argument("runner_args", nargs=argparse.REMAINDER, help="Runner args (pass after `--`)")
     return parser.parse_args(argv)
@@ -108,7 +110,7 @@ def _format_exception(e: Exception) -> str:
     return type(e).__name__
 
 
-def main(argv: list[str] | None = None) -> int:
+def run_workflow_automation_entrypoint(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     repo_root = PROJECT_ROOT.resolve()
     requested_workdir = Path(args.workdir).resolve() if args.workdir else repo_root
@@ -276,6 +278,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     return int(wrapper_exit_code)
+
+
+def main(argv: list[str] | None = None) -> int:
+    from src.cli.commands import run_automation_command
+
+    return int(run_automation_command([] if argv is None else argv))
 
 
 if __name__ == "__main__":
