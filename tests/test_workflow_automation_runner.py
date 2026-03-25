@@ -217,3 +217,17 @@ def test_success_does_not_overwrite_existing_attention(tmp_path, monkeypatch):
     assert cli.main(["--workdir", str(tmp_path), "--", "--preflight-only"]) == 0
     assert attention_path.read_text(encoding="utf-8") == attention_before
 
+
+def test_wrapper_self_failure_returns_one_and_writes_attention(tmp_path, monkeypatch):
+    import scripts.run_workflow_automation as cli
+
+    def _boom(*args, **kwargs):
+        raise OSError("subprocess failed")
+
+    monkeypatch.setattr(cli.subprocess, "run", _boom)
+
+    assert cli.main(["--workdir", str(tmp_path), "--", "--preflight-only"]) == 1
+    assert (tmp_path / "reports" / "workflow" / "automation" / "latest_run.json").exists()
+    assert (tmp_path / "reports" / "workflow" / "automation" / "latest_attention.json").exists()
+    assert list((tmp_path / "reports" / "workflow" / "automation" / "runs").glob("*/runner_stdout.log"))
+    assert list((tmp_path / "reports" / "workflow" / "automation" / "runs").glob("*/runner_stderr.log"))

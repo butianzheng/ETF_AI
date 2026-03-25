@@ -85,44 +85,65 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     repo_root = PROJECT_ROOT.resolve()
     workdir = Path(args.workdir).resolve() if args.workdir else repo_root
-    workdir.mkdir(parents=True, exist_ok=True)
-
-    if workdir != repo_root:
-        _ensure_workdir_config_symlink(workdir=workdir, repo_root=repo_root)
 
     automation_run_id = generate_automation_run_id()
     started_at = _iso_utc_now()
+    try:
+        workdir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return 1
+
+    if workdir != repo_root:
+        try:
+            _ensure_workdir_config_symlink(workdir=workdir, repo_root=repo_root)
+        except Exception:
+            return 1
+
     automation_root = workdir / "reports" / "workflow" / "automation"
 
     runner_args = list(args.runner_args or [])
     runner_command = [sys.executable, str(RUNNER_SCRIPT), *runner_args]
 
-    proc = subprocess.run(
-        runner_command,
-        cwd=str(workdir),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    runner_exit_code = proc.returncode
+    runner_exit_code: int | None
+    runner_stdout: str
+    runner_stderr: str
 
-    # Always persist raw logs first (even if contract parsing fails).
+    try:
+        proc = subprocess.run(
+            runner_command,
+            cwd=str(workdir),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        runner_exit_code = proc.returncode
+        runner_stdout = proc.stdout or ""
+        runner_stderr = proc.stderr or ""
+    except Exception as e:
+        runner_exit_code = None
+        runner_stdout = ""
+        runner_stderr = f"wrapper subprocess failure: {type(e).__name__}: {e}"
+
+    # Always persist raw logs first (even if subprocess/contract parsing fails).
     runner_logs_abs = write_runner_logs(
         automation_run_id=automation_run_id,
-        stdout=proc.stdout,
-        stderr=proc.stderr,
+        stdout=runner_stdout,
+        stderr=runner_stderr,
         root=automation_root,
     )
     runner_stdout_path = _rel_to_workdir(runner_logs_abs.get("runner_stdout_path"), workdir=workdir)
     runner_stderr_path = _rel_to_workdir(runner_logs_abs.get("runner_stderr_path"), workdir=workdir)
 
-    wrapper_exit_code = runner_exit_code
+    wrapper_exit_code = runner_exit_code if runner_exit_code is not None else 1
     contract: dict[str, Any] | None = None
     manifest_payload: dict[str, Any] | None = None
     record: dict[str, Any]
 
     try:
-        contract = parse_workflow_stdout_contract(proc.stdout)
+        if runner_exit_code is None:
+            raise WorkflowContractError("runner subprocess failed before producing stdout contract")
+
+        contract = parse_workflow_stdout_contract(runner_stdout)
         resolved_manifest_path = _resolve_manifest_path(str(contract["workflow_manifest"]), workdir=workdir)
         manifest_payload = json.loads(resolved_manifest_path.read_text(encoding="utf-8"))
         validate_workflow_contract(
@@ -193,4 +214,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
