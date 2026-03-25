@@ -5,7 +5,6 @@ import argparse
 from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
-import secrets
 import sys
 from typing import Any
 
@@ -20,6 +19,7 @@ from src.governance_pipeline import run_research_governance_pipeline
 from src.main import run_daily_pipeline
 from src.research_candidate_config import load_candidate_specs
 from src.storage.repositories import GovernanceRepository
+from src.workflow.manifest import generate_run_id, write_workflow_manifest
 from src.workflow.preflight import run_workflow_preflight
 
 
@@ -57,11 +57,6 @@ def _iso_utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _generate_run_id(now: datetime | None = None) -> str:
-    current = now or datetime.now(timezone.utc)
-    return f"{current:%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}"
-
-
 def _health_payload(result: Any) -> dict[str, Any]:
     incidents = getattr(result, "incidents", [])
     rollback = getattr(result, "rollback_recommendation", None)
@@ -88,31 +83,9 @@ def _write_health_report(result: Any, stage: str | None = None) -> str:
     return str(output_path)
 
 
-def _write_workflow_summary(payload: dict[str, Any]) -> Path:
-    summary_path = Path("reports/workflow/end_to_end_workflow_summary.json")
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return summary_path
-
-
-def _write_workflow_manifest(payload: dict[str, Any]) -> Path:
-    run_id = str(payload["run_id"])
-    manifest_path = Path("reports/workflow/runs") / run_id / "workflow_manifest.json"
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    return manifest_path
-
-
 def _write_workflow_artifacts(payload: dict[str, Any]) -> Path:
-    manifest_path = _write_workflow_manifest(payload)
-    payload["workflow_manifest_path"] = str(manifest_path)
-    manifest_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return _write_workflow_summary(payload)
+    paths = write_workflow_manifest(payload, root=Path("reports/workflow"))
+    return Path(paths["latest_summary_path"])
 
 
 def _finalize_workflow_run(payload: dict[str, Any], *, workflow_status: str) -> None:
@@ -249,7 +222,7 @@ def _failed_summary_payload(
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    run_id = _generate_run_id()
+    run_id = generate_run_id()
     started_at = _iso_utc_now()
     daily_result = {"executed": False, "artifacts": {}}
     research_governance_result: dict[str, Any] = {}

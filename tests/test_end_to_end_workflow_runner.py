@@ -96,6 +96,41 @@ def test_workflow_runner_happy_path_defaults_to_no_publish(tmp_path, monkeypatch
     assert payload["exit_code"] == 0
 
 
+def test_workflow_runner_writes_run_id_and_manifest_path(tmp_path, monkeypatch):
+    import scripts.run_end_to_end_workflow as cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "run_workflow_preflight",
+        lambda **kwargs: {"status": "passed", "checks": [], "failed_checks": []},
+    )
+    monkeypatch.setattr(cli, "run_research_governance_pipeline", lambda **kwargs: _stub_pipeline_result())
+    monkeypatch.setattr(
+        cli,
+        "check_governance_health",
+        lambda **kwargs: SimpleNamespace(incidents=[], rollback_recommendation=None),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_write_health_report",
+        lambda result, **kwargs: "reports/governance/health/2026-03-24.json",
+    )
+
+    exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24"])
+
+    assert exit_code == 0
+    summary_path = tmp_path / "reports" / "workflow" / "end_to_end_workflow_summary.json"
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["run_id"]
+    assert payload["workflow_manifest_path"].endswith("workflow_manifest.json")
+    assert payload["started_at"]
+    assert payload["finished_at"]
+    assert payload["preflight_result"]["status"] == "passed"
+    manifest_payload = json.loads(Path(payload["workflow_manifest_path"]).read_text(encoding="utf-8"))
+    assert manifest_payload == payload
+
+
 def test_workflow_runner_forwards_create_rollback_draft_only_to_health_check(tmp_path, monkeypatch):
     import scripts.run_end_to_end_workflow as cli
 
