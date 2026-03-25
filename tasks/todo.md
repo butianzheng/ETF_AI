@@ -292,7 +292,7 @@
 - 目标：补齐 README（`--preflight-only` 示例、stdout 合同、per-run manifest vs legacy summary、`workflow_status` 枚举值），并同步 `tasks/todo.md` 最终状态
 - 最终聚焦回归：
   - 命令：`pytest tests/test_workflow_preflight.py tests/test_workflow_manifest.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py tests/test_pipeline_e2e.py -q`
-  - 结果：通过（`47 passed in 1.63s`）
+  - 结果：通过（`47 passed in 1.32s`）
 - Task 4 提交：`0c4ffcf`（`docs: add workflow runner operationalization plan`）、`01bd729`（`docs: fix workflow runner docs per review`）
 
 ## 下一步行动（切到后续阶段建议）
