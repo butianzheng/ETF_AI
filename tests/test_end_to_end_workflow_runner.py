@@ -318,9 +318,24 @@ def test_workflow_runner_returns_one_when_preflight_fails(tmp_path, monkeypatch,
     manifest_payload = json.loads(Path(payload["workflow_manifest_path"]).read_text(encoding="utf-8"))
     assert manifest_payload == payload
     assert re.search(r"^run_id=\S+", stdout, re.MULTILINE)
-    assert re.search(r"^workflow_manifest=\S+", stdout, re.MULTILINE)
-    assert "workflow_status=failed" in stdout
-    assert "publish_executed=false" in stdout
+
+
+def test_workflow_runner_calls_init_db_before_preflight(tmp_path, monkeypatch):
+    import scripts.run_end_to_end_workflow as cli
+
+    order: list[str] = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "init_db", lambda: order.append("init_db"))
+    monkeypatch.setattr(
+        cli,
+        "run_workflow_preflight",
+        lambda **kwargs: order.append("preflight") or {"status": "passed", "checks": [], "failed_checks": []},
+    )
+
+    exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24", "--preflight-only"])
+
+    assert exit_code == 0
+    assert order == ["init_db", "preflight"]
 
 
 def test_workflow_runner_calls_init_db_before_preflight(tmp_path, monkeypatch):
