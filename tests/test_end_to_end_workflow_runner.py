@@ -341,24 +341,6 @@ def test_workflow_runner_calls_init_db_before_preflight(tmp_path, monkeypatch):
     assert order == ["init_db", "preflight"]
 
 
-def test_workflow_runner_calls_init_db_before_preflight(tmp_path, monkeypatch):
-    import scripts.run_end_to_end_workflow as cli
-
-    order: list[str] = []
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(cli, "init_db", lambda: order.append("init_db"))
-    monkeypatch.setattr(
-        cli,
-        "run_workflow_preflight",
-        lambda **kwargs: order.append("preflight") or {"status": "passed", "checks": [], "failed_checks": []},
-    )
-
-    exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24", "--preflight-only"])
-
-    assert exit_code == 0
-    assert order == ["init_db", "preflight"]
-
-
 def test_workflow_runner_preflight_failed_when_workflow_output_unwritable_is_controlled(
     tmp_path, monkeypatch, capsys
 ):
