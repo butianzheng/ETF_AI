@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import sys
 from typing import Any
 
 
@@ -74,9 +75,11 @@ def load_latest_status(root: Path) -> tuple[str, dict[str, Any]]:
     raise FileNotFoundError("no status artifacts found")
 
 
-def _resolve_manifest_path(root: Path, manifest_path: str | None) -> str:
-    if not manifest_path:
-        raise ValueError("manifest_path missing")
+def _resolve_manifest_path(root: Path, manifest_path: Any, *, field_name: str) -> str:
+    if manifest_path is None or manifest_path == "":
+        raise ValueError(f"{field_name} missing")
+    if not isinstance(manifest_path, str):
+        raise ValueError(f"{field_name} must be a string")
     path = Path(manifest_path)
     if path.is_absolute():
         return str(path)
@@ -96,7 +99,11 @@ def normalize_status_payload(
             "started_at": payload["automation_started_at"],
             "finished_at": payload["automation_finished_at"],
             "publish_executed": payload["publish_executed"],
-            "manifest_path": _resolve_manifest_path(root, payload["workflow_manifest"]),
+            "manifest_path": _resolve_manifest_path(
+                root,
+                payload["workflow_manifest"],
+                field_name="workflow_manifest",
+            ),
             "failed_step": payload.get("failed_step"),
             "blocked_reasons": payload.get("blocked_reasons") or [],
             "suggested_next_action": payload.get("suggested_next_action"),
@@ -123,7 +130,11 @@ def normalize_status_payload(
             "started_at": payload["started_at"],
             "finished_at": payload["finished_at"],
             "publish_executed": publish_result.get("executed", False),
-            "manifest_path": _resolve_manifest_path(root, payload["workflow_manifest_path"]),
+            "manifest_path": _resolve_manifest_path(
+                root,
+                payload["workflow_manifest_path"],
+                field_name="workflow_manifest_path",
+            ),
             "failed_step": failed_step,
             "blocked_reasons": research_governance.get("blocked_reasons") or [],
             "suggested_next_action": suggested_next_action,
@@ -141,12 +152,15 @@ def render_status_text(payload: dict[str, Any]) -> str:
         f"publish_executed: {str(payload.get('publish_executed')).lower()}",
         f"manifest_path: {payload.get('manifest_path')}",
     ]
-    if "failed_step" in payload:
-        lines.append(f"failed_step: {payload.get('failed_step')}")
-    if "blocked_reasons" in payload:
-        lines.append(f"blocked_reasons: {payload.get('blocked_reasons')}")
-    if "suggested_next_action" in payload:
-        lines.append(f"suggested_next_action: {payload.get('suggested_next_action')}")
+    failed_step = payload.get("failed_step")
+    if failed_step:
+        lines.append(f"failed_step: {failed_step}")
+    blocked_reasons = payload.get("blocked_reasons") or []
+    if blocked_reasons:
+        lines.append(f"blocked_reasons: {blocked_reasons}")
+    suggested_next_action = payload.get("suggested_next_action")
+    if suggested_next_action:
+        lines.append(f"suggested_next_action: {suggested_next_action}")
     if "source" in payload:
         lines.append(f"source: {payload.get('source')}")
     return "\n".join(lines)
@@ -158,7 +172,7 @@ def run_status_latest(workdir: str | None, *, output_json: bool) -> int:
         source, raw_payload = load_latest_status(root)
         normalized = normalize_status_payload(root, source, raw_payload)
     except (FileNotFoundError, ValueError) as exc:
-        print(str(exc))
+        print(str(exc), file=sys.stderr)
         return 1
 
     if output_json:

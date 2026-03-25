@@ -107,6 +107,24 @@ def test_status_latest_returns_one_when_no_artifact_exists(tmp_path):
     assert proc.returncode == 1
 
 
+def test_status_latest_json_error_goes_to_stderr(tmp_path):
+    root = tmp_path / "empty-artifacts"
+    root.mkdir(parents=True, exist_ok=True)
+
+    proc = _run_entry(["status", "latest", "--workdir", str(root), "--json"])
+
+    assert proc.returncode == 1
+    assert proc.stdout == ""
+    assert "no status artifacts found" in proc.stderr
+
+
+def test_status_latest_rejects_passthrough_args():
+    proc = _run_entry(["status", "latest", "extra-arg"])
+
+    assert proc.returncode == 2
+    assert "unrecognized arguments: extra-arg" in proc.stderr
+
+
 def test_status_latest_text_output_contains_key_fields(tmp_path):
     root = tmp_path / "artifacts"
     _write_json(
@@ -133,6 +151,33 @@ def test_status_latest_text_output_contains_key_fields(tmp_path):
     assert "finished_at:" in proc.stdout
     assert "publish_executed: false" in proc.stdout
     assert "manifest_path:" in proc.stdout
+    assert "failed_step: publish" in proc.stdout
+    assert "suggested_next_action:" in proc.stdout
+
+
+def test_status_latest_text_output_omits_empty_optional_fields(tmp_path):
+    root = tmp_path / "artifacts"
+    _write_json(
+        root / "reports/workflow/automation/latest_run.json",
+        {
+            "run_id": "auto-004",
+            "workflow_status": "blocked",
+            "automation_started_at": "2026-03-25T12:00:00Z",
+            "automation_finished_at": "2026-03-25T12:01:00Z",
+            "publish_executed": False,
+            "workflow_manifest": "reports/workflow/runs/auto-004/workflow_manifest.json",
+            "failed_step": None,
+            "blocked_reasons": [],
+            "suggested_next_action": None,
+        },
+    )
+
+    proc = _run_entry(["status", "latest", "--workdir", str(root)])
+
+    assert proc.returncode == 0, proc.stderr
+    assert "failed_step:" not in proc.stdout
+    assert "blocked_reasons:" not in proc.stdout
+    assert "suggested_next_action:" not in proc.stdout
 
 
 def test_status_latest_returns_one_for_invalid_json(tmp_path):
@@ -156,3 +201,24 @@ def test_status_latest_returns_one_for_invalid_json(tmp_path):
     proc = _run_entry(["status", "latest", "--workdir", str(root), "--json"])
 
     assert proc.returncode == 1
+
+
+def test_status_latest_returns_one_for_invalid_manifest_path_type(tmp_path):
+    root = tmp_path / "artifacts"
+    _write_json(
+        root / "reports/workflow/automation/latest_run.json",
+        {
+            "run_id": "auto-005",
+            "workflow_status": "succeeded",
+            "automation_started_at": "2026-03-25T13:00:00Z",
+            "automation_finished_at": "2026-03-25T13:01:00Z",
+            "publish_executed": True,
+            "workflow_manifest": ["not-a-string"],
+        },
+    )
+
+    proc = _run_entry(["status", "latest", "--workdir", str(root), "--json"])
+
+    assert proc.returncode == 1
+    assert proc.stdout == ""
+    assert "workflow_manifest" in proc.stderr

@@ -83,6 +83,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_research_governance_command(list(passthrough or []))
 
     if args.command == "status" and args.status_command == "latest":
+        if passthrough:
+            parser.error(f"unrecognized arguments: {' '.join(passthrough)}")
         return run_status_latest(args.workdir, output_json=args.json_output)
 
     parser.error("Unsupported command")
