@@ -99,3 +99,4 @@ def test_workflow_automation_wrapper_cli_smoke_failed_then_success_retains_atten
     attention_md_text = latest_attention_md.read_text(encoding="utf-8")
     assert failed_automation_run_id in attention_md_text
     assert str(retained_attention["workflow_manifest"]) in attention_md_text
+    assert not (workdir / ".workflow_automation_bootstrap").exists()

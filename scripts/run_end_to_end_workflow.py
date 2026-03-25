@@ -18,6 +18,7 @@ from src.governance.publisher import publish_decision
 from src.governance_pipeline import run_research_governance_pipeline
 from src.main import run_daily_pipeline
 from src.research_candidate_config import load_candidate_specs
+from src.storage.database import init_db
 from src.storage.repositories import GovernanceRepository
 from src.workflow.manifest import generate_run_id, write_workflow_manifest
 from src.workflow.preflight import run_workflow_preflight
@@ -257,6 +258,8 @@ def main(argv: list[str] | None = None) -> int:
     post_publish_health_check_result: dict[str, Any] = {"executed": False, "report_path": None}
     publish_result: dict[str, Any] = {"executed": False, "decision": None}
     preflight_result: dict[str, Any] = {"status": "not_run", "checks": [], "failed_checks": []}
+
+    init_db()
 
     preflight_result = run_workflow_preflight(
         start_date=args.start_date,
