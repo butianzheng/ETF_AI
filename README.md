@@ -22,6 +22,10 @@
 
 ## 快速开始
 
+如需当前阶段的完整操作手册，优先查看：
+
+- `docs/local-semi-auto-usage.md`
+
 ### 1. 安装依赖
 
 ```bash
