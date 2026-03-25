@@ -396,6 +396,12 @@
 - Task 4 聚焦回归：`python3 -m pytest tests/test_workflow_artifact_index.py tests/test_workflow_automation.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_etf_ops_cli.py tests/test_etf_ops_status.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q` 通过（`128 passed in 29.48s`）
 - Task 4 全量回归：`python3 -m pytest -q` 通过（`257 passed in 31.65s`）
 
+### 阶段结论
+
+- 当前阶段目标已完成，形成了 `workflow/automation` 链路的首版 artifact 索引层与统一状态查询入口
+- 当前建议先进入“本地半自动使用 + 排障体验验证”阶段，不继续在本阶段追加新功能开发
+- 后续迭代入口暂定为：实际使用后的问题收敛、状态查询体验反馈，以及是否需要补 CI/定时/retention/告警治理能力
+
 ## 2026-03-25 Local Workflow Automation Wrapper
 
 ### 执行清单（立项）
