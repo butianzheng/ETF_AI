@@ -295,7 +295,8 @@
   - 结果：通过（`47 passed in 1.32s`）
 - Task 4 提交链：
   - 初始提交：`0c4ffcf`（`docs: add workflow runner operationalization plan`）
-  - 后续修订：`01bd729`（`docs: fix workflow runner docs per review`）、`be69ac5`（`docs: update workflow runner task tracking`）、`a16baa9`（`docs: refresh workflow runner regression record`）
+  - 后续修订：`01bd729`（`docs: fix workflow runner docs per review`）、`be69ac5`（`docs: update workflow runner task tracking`）、`a16baa9`（`docs: refresh workflow runner regression record`）、`b307d28`（`docs: complete workflow runner task4 commit chain`）
+  - 说明：任务跟踪的“自更新提交”不在同一提交内自指记录；如有后续跟踪刷新，以 `git log` 为准。
 
 ## 下一步行动（切到后续阶段建议）
 
