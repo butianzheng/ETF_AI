@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
+import secrets
 import sys
 from typing import Any
 
@@ -19,6 +20,7 @@ from src.governance_pipeline import run_research_governance_pipeline
 from src.main import run_daily_pipeline
 from src.research_candidate_config import load_candidate_specs
 from src.storage.repositories import GovernanceRepository
+from src.workflow.preflight import run_workflow_preflight
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -32,6 +34,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--fee-rate", type=float, default=0.001, help="手续费率")
     parser.add_argument("--log-level", default="INFO", help="日志级别")
     parser.add_argument("--fail-on-blocked", action="store_true", help="当治理结果为 blocked 时返回退出码 2")
+    parser.add_argument("--preflight-only", action="store_true", help="仅执行预检并输出工作流摘要")
     parser.add_argument("--run-daily", action="store_true", help="是否在 research-governance 前执行 daily run")
     parser.add_argument("--daily-date", default=None, help="daily run 交易日期，格式 YYYY-MM-DD，默认今天")
     parser.add_argument("--daily-execute", action="store_true", help="daily run 通过检查后执行调仓")
@@ -48,6 +51,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.publish and not args.approved_by:
         parser.error("--publish requires --approved-by")
     return args
+
+
+def _iso_utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _generate_run_id(now: datetime | None = None) -> str:
+    current = now or datetime.now(timezone.utc)
+    return f"{current:%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}"
 
 
 def _health_payload(result: Any) -> dict[str, Any]:
@@ -84,6 +96,30 @@ def _write_workflow_summary(payload: dict[str, Any]) -> Path:
         encoding="utf-8",
     )
     return summary_path
+
+
+def _write_workflow_manifest(payload: dict[str, Any]) -> Path:
+    run_id = str(payload["run_id"])
+    manifest_path = Path("reports/workflow/runs") / run_id / "workflow_manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    return manifest_path
+
+
+def _write_workflow_artifacts(payload: dict[str, Any]) -> Path:
+    manifest_path = _write_workflow_manifest(payload)
+    payload["workflow_manifest_path"] = str(manifest_path)
+    manifest_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return _write_workflow_summary(payload)
+
+
+def _finalize_workflow_run(payload: dict[str, Any], *, workflow_status: str) -> None:
+    _write_workflow_artifacts(payload)
+    print(f"workflow_status={workflow_status}")
+    publish_executed = bool(payload.get("publish_result", {}).get("executed"))
+    print(f"publish_executed={'true' if publish_executed else 'false'}")
 
 
 def _research_governance_payload(pipeline_result: dict[str, Any]) -> dict[str, Any]:
@@ -175,6 +211,9 @@ def _decision_payload(decision: Any) -> dict[str, Any]:
 
 def _failed_summary_payload(
     *,
+    run_id: str,
+    started_at: str,
+    preflight_result: dict[str, Any],
     failed_step: str,
     error: Exception,
     daily_result: dict[str, Any],
@@ -184,8 +223,12 @@ def _failed_summary_payload(
     publish_result: dict[str, Any],
 ) -> dict[str, Any]:
     return {
+        "run_id": run_id,
+        "started_at": started_at,
+        "finished_at": _iso_utc_now(),
         "status": "failed",
         "failed_step": failed_step,
+        "preflight_result": preflight_result,
         "error": _error_payload(error),
         "daily_result": daily_result,
         "research_governance_result": research_governance_result,
@@ -198,11 +241,59 @@ def _failed_summary_payload(
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    run_id = _generate_run_id()
+    started_at = _iso_utc_now()
     daily_result = {"executed": False, "artifacts": {}}
     research_governance_result: dict[str, Any] = {}
     health_check_result: dict[str, Any] = {"executed": False, "report_path": None}
     post_publish_health_check_result: dict[str, Any] = {"executed": False, "report_path": None}
     publish_result: dict[str, Any] = {"executed": False, "decision": None}
+    preflight_result: dict[str, Any] = {"status": "not_run", "checks": [], "failed_checks": []}
+
+    preflight_result = run_workflow_preflight(
+        start_date=args.start_date,
+        end_date=args.end_date,
+        daily_date=args.daily_date,
+        candidate_config=args.candidate_config,
+        workflow_root=Path("reports/workflow"),
+        health_root=Path("reports/governance/health"),
+    )
+    if preflight_result["status"] == "failed":
+        _finalize_workflow_run(
+            _failed_summary_payload(
+                run_id=run_id,
+                started_at=started_at,
+                preflight_result=preflight_result,
+                failed_step="preflight",
+                error=RuntimeError("workflow preflight failed"),
+                daily_result=daily_result,
+                research_governance_result=research_governance_result,
+                health_check_result=health_check_result,
+                post_publish_health_check_result=post_publish_health_check_result,
+                publish_result=publish_result,
+            ),
+            workflow_status="failed",
+        )
+        return 1
+
+    if args.preflight_only:
+        _finalize_workflow_run(
+            {
+                "run_id": run_id,
+                "started_at": started_at,
+                "finished_at": _iso_utc_now(),
+                "status": "preflight_only",
+                "preflight_result": preflight_result,
+                "daily_result": daily_result,
+                "research_governance_result": research_governance_result,
+                "health_check_result": health_check_result,
+                "post_publish_health_check_result": post_publish_health_check_result,
+                "publish_result": publish_result,
+                "exit_code": 0,
+            },
+            workflow_status="preflight_only",
+        )
+        return 0
 
     if args.run_daily:
         try:
@@ -215,8 +306,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             daily_result = _daily_payload(daily_pipeline_result)
         except Exception as error:
-            _write_workflow_summary(
+            _finalize_workflow_run(
                 _failed_summary_payload(
+                    run_id=run_id,
+                    started_at=started_at,
+                    preflight_result=preflight_result,
                     failed_step="daily_run",
                     error=error,
                     daily_result=daily_result,
@@ -224,7 +318,8 @@ def main(argv: list[str] | None = None) -> int:
                     health_check_result=health_check_result,
                     post_publish_health_check_result=post_publish_health_check_result,
                     publish_result=publish_result,
-                )
+                ),
+                workflow_status="failed",
             )
             return 1
 
@@ -239,8 +334,11 @@ def main(argv: list[str] | None = None) -> int:
             fail_on_blocked=args.fail_on_blocked,
         )
     except Exception as error:
-        _write_workflow_summary(
+        _finalize_workflow_run(
             _failed_summary_payload(
+                run_id=run_id,
+                started_at=started_at,
+                preflight_result=preflight_result,
                 failed_step="research_governance",
                 error=error,
                 daily_result=daily_result,
@@ -248,7 +346,8 @@ def main(argv: list[str] | None = None) -> int:
                 health_check_result=health_check_result,
                 post_publish_health_check_result=post_publish_health_check_result,
                 publish_result=publish_result,
-            )
+            ),
+            workflow_status="failed",
         )
         return 1
 
@@ -282,8 +381,11 @@ def main(argv: list[str] | None = None) -> int:
             health_report_path = _write_health_report(health_result)
             health_check_result["report_path"] = health_report_path
         except Exception as error:
-            _write_workflow_summary(
+            _finalize_workflow_run(
                 _failed_summary_payload(
+                    run_id=run_id,
+                    started_at=started_at,
+                    preflight_result=preflight_result,
                     failed_step="health_check",
                     error=error,
                     daily_result=daily_result,
@@ -291,7 +393,8 @@ def main(argv: list[str] | None = None) -> int:
                     health_check_result=health_check_result,
                     post_publish_health_check_result=post_publish_health_check_result,
                     publish_result=publish_result,
-                )
+                ),
+                workflow_status="failed",
             )
             return 1
     finally:
@@ -311,8 +414,11 @@ def main(argv: list[str] | None = None) -> int:
                     policy=policy_loader.load_strategy_config().governance,
                 )
             except Exception as error:
-                _write_workflow_summary(
+                _finalize_workflow_run(
                     _failed_summary_payload(
+                        run_id=run_id,
+                        started_at=started_at,
+                        preflight_result=preflight_result,
                         failed_step="publish",
                         error=error,
                         daily_result=daily_result,
@@ -320,7 +426,8 @@ def main(argv: list[str] | None = None) -> int:
                         health_check_result=health_check_result,
                         post_publish_health_check_result=post_publish_health_check_result,
                         publish_result=publish_result,
-                    )
+                    ),
+                    workflow_status="failed",
                 )
                 return 1
 
@@ -349,8 +456,11 @@ def main(argv: list[str] | None = None) -> int:
                 post_health_report_path = _write_health_report(post_health_result, stage="post_publish")
                 post_publish_health_check_result["report_path"] = post_health_report_path
             except Exception as error:
-                _write_workflow_summary(
+                _finalize_workflow_run(
                     _failed_summary_payload(
+                        run_id=run_id,
+                        started_at=started_at,
+                        preflight_result=preflight_result,
                         failed_step="post_publish_health_check",
                         error=error,
                         daily_result=daily_result,
@@ -358,13 +468,19 @@ def main(argv: list[str] | None = None) -> int:
                         health_check_result=health_check_result,
                         post_publish_health_check_result=post_publish_health_check_result,
                         publish_result=publish_result,
-                    )
+                    ),
+                    workflow_status="failed",
                 )
                 return 1
         finally:
             repo.close()
 
     summary_payload = {
+        "run_id": run_id,
+        "started_at": started_at,
+        "finished_at": _iso_utc_now(),
+        "status": "blocked" if blocked else "succeeded",
+        "preflight_result": preflight_result,
         "daily_result": daily_result,
         "research_governance_result": research_governance_result,
         "health_check_result": health_check_result,
@@ -372,8 +488,7 @@ def main(argv: list[str] | None = None) -> int:
         "publish_result": publish_result,
         "exit_code": blocked_exit_code,
     }
-    _write_workflow_summary(summary_payload)
-    print(f"publish_executed={'true' if publish_result['executed'] else 'false'}")
+    _finalize_workflow_run(summary_payload, workflow_status=summary_payload["status"])
     return blocked_exit_code
 
 

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -215,6 +216,102 @@ def test_workflow_runner_blocked_fail_on_blocked_returns_two(tmp_path, monkeypat
     summary_path = tmp_path / "reports" / "workflow" / "end_to_end_workflow_summary.json"
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["exit_code"] == 2
+
+
+def test_workflow_runner_preflight_only_writes_summary_and_returns_zero(tmp_path, monkeypatch, capsys):
+    import scripts.run_end_to_end_workflow as cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "run_workflow_preflight",
+        lambda **kwargs: {
+            "status": "passed",
+            "checks": [{"name": "date_args", "status": "passed", "detail": None}],
+            "failed_checks": [],
+        },
+    )
+
+    exit_code = cli.main(
+        [
+            "--start-date",
+            "2025-12-01",
+            "--end-date",
+            "2026-03-24",
+            "--preflight-only",
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    summary_path = tmp_path / "reports" / "workflow" / "end_to_end_workflow_summary.json"
+    assert exit_code == 0
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["preflight_result"]["status"] == "passed"
+    assert payload["status"] == "preflight_only"
+    assert "workflow_status=preflight_only" in stdout
+
+
+def test_workflow_runner_returns_one_when_preflight_fails(tmp_path, monkeypatch, capsys):
+    import scripts.run_end_to_end_workflow as cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "run_workflow_preflight",
+        lambda **kwargs: {
+            "status": "failed",
+            "checks": [{"name": "strategy_config", "status": "failed", "detail": "boom"}],
+            "failed_checks": [{"name": "strategy_config", "detail": "boom"}],
+        },
+    )
+
+    exit_code = cli.main(["--start-date", "2025-12-01", "--end-date", "2026-03-24"])
+    stdout = capsys.readouterr().out
+    summary_path = tmp_path / "reports" / "workflow" / "end_to_end_workflow_summary.json"
+    assert exit_code == 1
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["run_id"]
+    assert Path(payload["workflow_manifest_path"]).exists()
+    assert payload["failed_step"] == "preflight"
+    manifest_payload = json.loads(Path(payload["workflow_manifest_path"]).read_text(encoding="utf-8"))
+    assert manifest_payload == payload
+    assert "workflow_status=failed" in stdout
+
+
+def test_workflow_runner_blocked_stdout_status_matches_exit_code(tmp_path, monkeypatch, capsys):
+    import scripts.run_end_to_end_workflow as cli
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        cli,
+        "run_workflow_preflight",
+        lambda **kwargs: {"status": "passed", "checks": [], "failed_checks": []},
+    )
+    monkeypatch.setattr(cli, "run_research_governance_pipeline", lambda **kwargs: _blocked_pipeline_result(exit_code=2))
+    monkeypatch.setattr(
+        cli,
+        "check_governance_health",
+        lambda **kwargs: SimpleNamespace(incidents=[], rollback_recommendation=None),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_write_health_report",
+        lambda result, **kwargs: "reports/governance/health/2026-03-24.json",
+    )
+
+    exit_code = cli.main(
+        [
+            "--start-date",
+            "2025-12-01",
+            "--end-date",
+            "2026-03-24",
+            "--fail-on-blocked",
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    assert exit_code == 2
+    assert "workflow_status=blocked" in stdout
 
 
 def test_workflow_runner_failed_summary_for_research_governance_fatal(tmp_path, monkeypatch):
