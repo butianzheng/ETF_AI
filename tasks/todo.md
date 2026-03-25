@@ -198,77 +198,6 @@
 ### 规划产物
 
 - Spec: `docs/superpowers/specs/2026-03-25-shared-candidate-config-helper-design.md`
-
-# Status Latest Command Implementation Plan
-
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-**Goal:** 在隔离 worktree 中实现 `status latest` 的读取、归一化和文本/JSON 输出，并通过单测验证。
-
-**Architecture:** 新增 `src/cli/status.py` 提供 root 解析、artifact 读取、归一化、文本渲染；`src/cli/etf_ops.py` 负责 CLI 接线；测试覆盖优先级、fallback、错误码与文本输出关键字段。
-
-**Tech Stack:** Python, pytest, argparse (现有 CLI)
-
----
-
-### Task 1: Status Latest CLI + Normalization
-
-**Files:**
-- Create: `src/cli/status.py`
-- Create: `tests/test_etf_ops_status.py`
-- Modify: `src/cli/etf_ops.py`
-
-- [x] **Step 1: Write the failing tests**
-
-```python
-def test_status_latest_prefers_automation_latest_run(tmp_path):
-    ...
-
-def test_status_latest_falls_back_to_workflow_summary(tmp_path):
-    ...
-
-def test_status_latest_returns_one_when_no_artifact_exists(tmp_path):
-    ...
-
-def test_status_latest_text_output_contains_key_fields(tmp_path, capsys):
-    ...
-
-def test_status_latest_returns_one_for_invalid_json(tmp_path):
-    ...
-```
-
-- [x] **Step 2: Run test to verify it fails**
-
-Run: `pytest tests/test_etf_ops_status.py -q`  
-Expected: FAIL (status/latest not implemented)
-
-- [x] **Step 3: Write minimal implementation**
-
-```python
-def resolve_status_root(workdir: str | None) -> Path:
-    ...
-
-def load_latest_status(root: Path) -> tuple[str, dict[str, Any]]:
-    ...
-
-def normalize_status_payload(...):
-    ...
-
-def render_status_text(...):
-    ...
-```
-
-- [x] **Step 4: Run test to verify it passes**
-
-Run: `pytest tests/test_etf_ops_status.py -q`  
-Expected: PASS
-
-- [x] **Step 5: Commit**
-
-```bash
-git add tests/test_etf_ops_status.py src/cli/status.py src/cli/etf_ops.py
-git commit -m "feat: add latest status command"
-```
 - Plan: `docs/superpowers/plans/2026-03-25-shared-candidate-config-helper-implementation.md`
 
 ### 完成结果
@@ -290,22 +219,6 @@ git commit -m "feat: add latest status command"
 - [x] Task 3：可选 daily / publish / post-publish health
 - [x] Task 4：README / 任务跟踪 / 最终聚焦回归
 
-## 2026-03-25 Unified CLI `status latest`（Task 2）
-
-### 执行清单（立项）
-- [x] 读取相关上下文与 schema，确认字段映射和 fallback 语义
-- [ ] 先新增 `tests/test_etf_ops_status.py` 并覆盖 5 个必测场景
-- [ ] 运行 `pytest tests/test_etf_ops_status.py -q` 并确认 RED
-- [ ] 新增 `src/cli/status.py`，实现读取/归一化/文本渲染最小闭环
-- [ ] 修改 `src/cli/etf_ops.py`，接入 `status latest --workdir --json`
-- [ ] 运行 `python scripts/etf_ops.py status latest --help` 并确认返回 0
-- [ ] 回跑 `pytest tests/test_etf_ops_status.py -q` 并确认 GREEN
-- [ ] 提交 `feat: add latest status command`
-
-### 审查记录（待完成）
-- [ ] 对照 task 要求逐项自检（根目录语义、双源回退、JSON 纯输出、错误返回码）
-- [ ] 记录验证命令与结果
-
 ### 规划产物
 
 - Spec: `docs/superpowers/specs/2026-03-25-end-to-end-workflow-runner-design.md`
@@ -323,8 +236,8 @@ git commit -m "feat: add latest status command"
   - Task 1 code quality review：修复后已通过
   - Task 2 spec compliance review：修复后已通过
   - Task 2 code quality review：修复后已通过
-  - Task 3 spec compliance review：修复后已通过
-  - Task 3 code quality review：修复后已通过
+  - Task 3 spec compliance review：已通过
+  - Task 3 code quality review：已通过
 - fresh 验证：
   - Task 1：`pytest tests/test_end_to_end_workflow_runner.py -q` 通过（`4 passed in 0.65s`）
   - Task 2：`pytest tests/test_end_to_end_workflow_runner.py -q` 通过（`9 passed in 0.69s`）
@@ -532,109 +445,19 @@ git commit -m "feat: add latest status command"
 ## 2026-03-12 Phase 3 开发
 
 ### 计划
-- [x] 增加执行记录模型与仓储接口
-- [x] 实现 `src/execution/checker.py`
-- [x] 实现 `src/execution/executor.py`
-- [x] 覆盖白名单、最小交易单位、资金充足性检查
-- [x] 增加最小执行测试并更新验证状态
+- [x] 统一成交语义，落地统一 `ExecutionResult`
+- [x] 引入成交模拟与交易成本模型
+- [x] 统一 `OrderChecker` 与 `OrderExecutor` 的成交计算
+- [x] 统一回测成交逻辑，保留现金余额
+- [x] 串行执行执行/回测/回归测试
 
 ### 本轮结果
-- 新增 `execution_record` 表，用于记录执行动作、状态、检查摘要和原因
-- 新增 `ExecutionRepository`，支持执行记录落库与查询
-- 实现 `OrderChecker`，覆盖交易日、人工确认、白名单、调仓约束、最小交易单位和资金检查
-- 实现 `RebalanceExecutor`，支持模拟买入、卖出、换仓、空仓和持仓不变场景
-- 新增 `tests/test_execution.py`
-- `pytest -q tests/test_execution.py` 通过，3 项测试全部成功
-- `pytest -q tests` 通过，当前 7 项测试全部成功
-
-## 2026-03-12 端到端闭环
-
-### 已完成
-- [x] 将 `DataQAAgent`、`RiskMonitorAgent`、`ReportAgent` 接入日常主流程
-- [x] 将 `OrderChecker`、`RebalanceExecutor` 接入日常主流程
-- [x] 支持日报 Markdown 和 JSON 落盘到 `reports/daily/`
-- [x] `scripts/daily_run.py` 支持 `--execute`、`--manual-approve`、`--available-cash`
-- [x] 增加端到端测试 `tests/test_pipeline_e2e.py`
-
-## 2026-03-24 单一 ETF 治理式策略改造（Task 6-7）
-
-### 已完成
-- [x] 新增 `RiskAdjustedMomentumStrategy`，引入 20 日波动惩罚
-- [x] 新增研究侧候选策略注册表，支持 `trend_momentum` / `risk_adjusted_momentum`
-- [x] `config/research.yaml` 与 `ResearchConfig` 支持 `strategy_id + overrides`
-- [x] 研究回测链路按 registry 实例化候选策略，输出 `candidate_name`、`strategy_id`、`target_etf_counts`
-- [x] 研究汇总页与统一门户展示 `strategy_id` / `active_strategy_id`
-- [x] README 明确生产单一 ETF、研究多候选策略、月末信号次一交易日执行
-
-### 验证结果
-- [x] `pytest -q tests/test_candidate_risk_adjusted_momentum.py tests/test_research_pipeline.py`
-- [x] `pytest -q tests/test_research_summary.py tests/test_report_portal.py`
-- [x] `pytest -q`
-- [x] `python3 -m compileall src scripts tests`
-
-## 2026-03-24 Implementation Plan 审计
-
-### 审计结论
-- [x] `docs/superpowers/plans/2026-03-23-single-etf-governed-strategy-implementation.md` 的 Task 1-7 已全部落地
-- [x] 计划文档已同步为完成态，并补充“当前目录非 Git 仓库，未执行 commit”说明
-- [x] 当前无该计划内遗留未开始任务
-
-### 当前验证
-- [x] `pytest -q` 通过，当前 52 项测试全部成功
-- [x] `python3 -m compileall src scripts tests` 通过
-- [x] 生产侧仍保持“单一 ETF 或空仓”约束
-- [x] 研究侧可同时比较 `trend_momentum` 与 `risk_adjusted_momentum`
-
-### 下一阶段建议
-- [ ] 进入第二阶段“治理层落地”，把研究赢家的准入、审批、发布与回退机制正式接到生产侧
-- [ ] 为生产侧引入受控策略切换，而不是长期固定 `trend_momentum`
-- [ ] 在接入 Git 根目录后补齐 commit / 里程碑归档，形成可追踪发布记录
-
-## 2026-03-24 仓库初始化与第二阶段计划
-
-### 计划
-- [x] 初始化 Git 仓库并核对 `.gitignore`
-- [x] 生成首个基线提交，固化当前 Task 1-7 完成状态
-- [x] 基于既有治理设计输出第二阶段治理层落地 plan
-- [x] 同步 `tasks/todo.md` 与相关文档状态
-
-### 结果
-- 已初始化 Git 仓库，主分支为 `main`
-- 已生成基线提交：`6731fd0 chore: bootstrap etf ai governance foundation`
-- 已新增第二阶段计划：
-  `docs/superpowers/plans/2026-03-24-governance-layer-rollout-phase-two.md`
-
-## 2026-03-12 项目测试与缺陷扫描
-
-### 扫描计划
-- [x] 盘点项目结构、现有测试与历史任务记录
-- [x] 运行测试与基础质量检查，确认可复现问题
-- [x] 抽查关键模块实现与测试覆盖，识别潜在缺陷
-- [x] 输出修复清单，按优先级整理
-
-### 扫描结果
-- `pytest -q` 通过，当前 15 项测试全部成功
-- `python3 -m compileall src scripts tests` 通过
-- 发现 6 个需要进入修复队列的问题，其中 4 个已做最小复现
-
-### 已确认问题
-- P0: `RebalanceExecutor` 在手续费挤占最小交易单位时，仍会写入 `filled_shares=0` 的 `filled` 结果，并把组合状态更新为持有目标 ETF
-- P0: `OrderChecker` 依赖全局 `trading_calendar`，但日常主流程未加载真实交易日历；在日历为空时仅按“非周末”判断，会放行法定节假日
-- P1: `TradingCalendar.get_rebalance_dates(..., frequency="biweekly")` 在 15 号不是交易日时直接跳过，导致双周调仓点缺失
-- P1: `compare_params()` 与 `SimpleBacktestEngine.run()` 都会写 `BacktestRun`，一次比较会重复落库两条记录
-- P1: 风险监控输入只构造单点 `nav_series`，`current_drawdown` 基本恒为 0，风险 Agent 无法识别真实回撤
-
-## 2026-03-24 Task 3: 抽出统一成交模拟器并让研究/生产共用
-
-### 计划
-- [x] 在 `tests/test_execution_simulator.py` 先写失败测试，覆盖整手约束、缺价格失败、卖后买失败保留现金、HOLD
-- [x] 运行 `pytest -q tests/test_execution_simulator.py tests/test_execution.py`，确认当前缺少统一 simulator
-- [x] 新增 `src/execution/simulator.py`，实现统一成交模拟与结果对象
-- [x] 修改 `src/execution/checker.py`，仅保留闸门检查并委托 simulator 做成交预估
-- [x] 修改 `src/execution/executor.py`，移除重复买卖数学，改为基于 simulator 结果落库
-- [x] 修改 `src/backtest/engine.py`，用 simulator 替换分数股逻辑并保留现金余额
-- [x] 修改 `src/main.py`，通过 `strategy_config.trade_policy` 初始化检查/执行链路
-- [x] 运行 `pytest -q tests/test_execution.py tests/test_execution_simulator.py tests/test_regressions.py`
+- 已新增 `src/execution/simulator.py`，实现统一成交模拟与结果对象
+- 已修改 `src/execution/checker.py`，仅保留闸门检查并委托 simulator 做成交预估
+- 已修改 `src/execution/executor.py`，移除重复买卖数学，改为基于 simulator 结果落库
+- 已修改 `src/backtest/engine.py`，用 simulator 替换分数股逻辑并保留现金余额
+- 已修改 `src/main.py`，通过 `strategy_config.trade_policy` 初始化检查/执行链路
+- 已执行 `pytest -q tests/test_execution.py tests/test_execution_simulator.py tests/test_regressions.py`
 
 ### 审查
 - [x] 对照任务边界确认：本轮只统一成交/持仓转换语义，不引入新的 signal/execution 双阶段状态机
