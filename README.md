@@ -199,6 +199,28 @@ python scripts/run_end_to_end_workflow.py \
 - `exit_code=1`：fatal，包括 `preflight`、`research-governance`、`health check`、`publish`、`post-publish health check`
 - manifest / summary JSON 内会同时保留：`health_check_result`（publish 前）、`post_publish_health_check_result`（publish 后，若执行）、`publish_result`
 
+### 12. 本地自动化包装入口（Local Workflow Automation Wrapper）
+
+```bash
+python scripts/run_workflow_automation.py -- --preflight-only
+python scripts/run_workflow_automation.py --workdir /tmp/workflow_job -- --start-date 2025-12-01 --end-date 2026-03-24
+```
+
+说明：
+- wrapper 通过真实子进程调用 `scripts/run_end_to_end_workflow.py`，不复制业务编排逻辑
+- `--workdir` 控制 runner 进程的工作目录（cwd）；当 `workdir != repo root` 时，会自动准备 `config -> <repo>/config` 符号链接，保证配置解析路径一致
+- `--` 后面的参数会原样透传给 runner（例如 `--preflight-only`、`--fail-on-blocked`、`--publish` 等）
+
+自动化产物目录（固定）：
+- `reports/workflow/automation/run_history.jsonl`：历史运行索引（append-only）
+- `reports/workflow/automation/latest_run.json`：最近一次 wrapper 运行快照（每次运行都会更新）
+- `reports/workflow/automation/latest_attention.json|md`：最近一次“需人工关注”摘要，仅在 `blocked`、`failed`、`automation_contract_error` 时刷新
+- `reports/workflow/automation/runs/<automation_run_id>/runner_stdout.log|runner_stderr.log`：runner 原始日志
+
+`latest_run.json` 与 `latest_attention.*` 区别：
+- `latest_run.json` 记录“最后一次运行”事实，不区分成功或失败
+- `latest_attention.*` 只记录“最后一次需人工介入”的事件；成功运行不会清空旧 attention 文件
+
 ## 项目结构
 
 ```

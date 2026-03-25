@@ -309,26 +309,42 @@
 ### 执行清单（立项）
 - [x] 完成 design spec
 - [x] 完成 implementation plan
-- [ ] Task 1：自动化 helper、索引写盘与 attention 合同
-- [ ] Task 2：wrapper 脚本、退出码语义与 contract error 处理
-- [ ] Task 3：真实 wrapper smoke 与 attention 保留语义
-- [ ] Task 4：README / 任务跟踪 / 最终聚焦回归
+- [x] Task 1：自动化 helper、索引写盘与 attention 合同
+- [x] Task 2：wrapper 脚本、退出码语义与 contract error 处理
+- [x] Task 3：真实 wrapper smoke 与 attention 保留语义
+- [x] Task 4：README / 任务跟踪 / 最终聚焦回归
 
 ### 规划产物
 
 - Spec: `docs/superpowers/specs/2026-03-25-local-workflow-automation-design.md`
 - Plan: `docs/superpowers/plans/2026-03-25-local-workflow-automation-implementation.md`
 
-### 当前状态
+### 完成结果
 
 - Spec review：已通过
 - Plan review：已通过
+- Task 1 提交：`46e773a`、`20f2645`、`12f571c`、`b1d796c`
+- Task 1 spec review：通过
+- Task 1 code review：通过
+- Task 1 fresh 验证：`pytest tests/test_workflow_automation.py -q` 通过（`14 passed in 0.49s`）
+- Task 2 提交：`b5d8938`、`af2f3af`、`a46f1ad`、`0c8b18c`
+- Task 2 spec review：修复后通过
+- Task 2 code review：修复后通过
+- Task 2 fresh 验证：`pytest tests/test_workflow_automation.py tests/test_workflow_automation_runner.py -q` 通过（`29 passed in 0.57s`）
+- Task 3 提交：`8bc2777`、`d49d6d5`、`3713cbe`、`e35729c`、`2c57b3f`
+- Task 3 spec review：修复后通过
+- Task 3 code review：修复后通过
+- Task 3 fresh 验证：`pytest tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_end_to_end_workflow_runner.py -q` 通过（`34 passed in 3.29s`）
+- Task 4 提交：本次提交（`docs: finalize local workflow automation wrapper`）
+- 审查状态：Task 1/2/3 已完成双审查（spec + code），Task 4 文档一致性与任务跟踪自审通过
+- Task 4 必跑聚焦回归：`pytest tests/test_workflow_automation.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_workflow_preflight.py tests/test_workflow_manifest.py -q` 通过（`57 passed in 3.97s`）
+- Task 4 扩展回归：`pytest tests/test_workflow_preflight.py tests/test_workflow_manifest.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_workflow_automation.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py tests/test_pipeline_e2e.py -q` 通过（`78 passed in 4.50s`）
 
 ## 下一步行动
 
-1. 审查并确认 Local Workflow Automation Wrapper implementation plan
-2. 按 plan 执行 Task 1，先锁定 automation helper 与 history/latest/attention 合同
-3. 再执行 wrapper 脚本与真实 smoke，最后更新 README / tasks 并做聚焦回归
+1. 将 `scripts/run_workflow_automation.py` 接入 cron（本地）与 GitHub Actions（CI）双通道定时触发
+2. 在 CI 中上传 `reports/workflow/automation/` 与 runner per-run manifest 作为 artifact，替代仅依赖控制台日志
+3. 制定 artifact retention 策略（按运行状态区分保留周期）并补齐 blocked/failed 告警与人工确认流程
 
 ## 2026-03-12 项目扫描
 
