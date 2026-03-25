@@ -39,6 +39,25 @@ def _normalize_bool(value: Any, *, default: bool = False, field_name: str = "boo
     raise WorkflowContractError(f"invalid {field_name} value: {value!r}")
 
 
+def _wrapper_failure_is_contract_error(record: dict[str, Any]) -> bool:
+    """Treat wrapper failure as automation_contract_error when runner reported success-ish status.
+
+    This guards against wrapper-level failures being swallowed when callers forget to set attention_type.
+    """
+
+    status = record.get("workflow_status")
+    wrapper_exit_code = record.get("wrapper_exit_code")
+    if wrapper_exit_code is None:
+        return False
+    try:
+        code = int(wrapper_exit_code)
+    except Exception:
+        return False
+    if code == 0:
+        return False
+    return status in (None, "succeeded", "preflight_only")
+
+
 def generate_automation_run_id(now: datetime | None = None) -> str:
     current = now or datetime.now(timezone.utc)
     return f"{current:%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}"
@@ -218,6 +237,8 @@ def should_update_attention(record: dict[str, Any]) -> bool:
     attention_type = record.get("attention_type")
     if attention_type == "automation_contract_error":
         return True
+    if _wrapper_failure_is_contract_error(record):
+        return True
     status = record.get("workflow_status")
     if status in ("succeeded", "preflight_only"):
         return False
@@ -248,7 +269,7 @@ def _build_attention_payload(record: dict[str, Any]) -> dict[str, Any]:
     attention_type = record.get("attention_type")
     if attention_type not in _ATTENTION_TYPES_ALLOWED and attention_type is not None:
         attention_type = None
-    if record.get("failed_step") == "automation_contract_error":
+    if _wrapper_failure_is_contract_error(record) or record.get("failed_step") == "automation_contract_error":
         attention_type = "automation_contract_error"
     elif workflow_status == "blocked":
         attention_type = "workflow_blocked"

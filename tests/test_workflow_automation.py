@@ -311,3 +311,34 @@ def test_write_automation_outputs_returns_attention_keys_even_when_not_updated(t
     assert "latest_attention_md_path" in paths
     assert paths["latest_attention_json_path"] is None
     assert paths["latest_attention_md_path"] is None
+
+
+def test_wrapper_failure_triggers_contract_error_attention_even_if_workflow_preflight_only(tmp_path):
+    from src.workflow.automation import write_automation_outputs
+
+    root = tmp_path / "reports" / "workflow" / "automation"
+    record = {
+        "automation_run_id": "20260325T010203Z-a1b2c3d4",
+        "automation_started_at": "2026-03-25T01:02:03Z",
+        "automation_finished_at": "2026-03-25T01:02:05Z",
+        "runner_command": ["python", "/abs/scripts/run_end_to_end_workflow.py"],
+        "runner_process_exit_code": 0,
+        "wrapper_exit_code": 1,
+        "run_id": "20260325T010203Z-abcd1234",
+        "workflow_manifest": "reports/workflow/runs/20260325T010203Z-abcd1234/workflow_manifest.json",
+        "workflow_status": "preflight_only",
+        "publish_executed": False,
+        "manifest_exit_code": 0,
+        "failed_step": None,
+        "blocked_reasons": [],
+        "health_check_report_path": None,
+        "post_publish_health_check_report_path": None,
+        "research_governance_pipeline_summary_path": None,
+        "runner_stdout_path": "reports/workflow/automation/runs/x/runner_stdout.log",
+        "runner_stderr_path": "reports/workflow/automation/runs/x/runner_stderr.log",
+    }
+
+    paths = write_automation_outputs(record, root=root)
+    assert paths["latest_attention_json_path"] is not None
+    payload = json.loads(Path(paths["latest_attention_json_path"]).read_text(encoding="utf-8"))
+    assert payload["attention_type"] == "automation_contract_error"
