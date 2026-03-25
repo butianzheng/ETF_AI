@@ -11,18 +11,18 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.main import run_daily_pipeline
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="执行 ETF 动量轮动日常流程")
     parser.add_argument("--date", default=None, help="交易日期，格式 YYYY-MM-DD，默认今天")
     parser.add_argument("--log-level", default="INFO", help="日志级别")
     parser.add_argument("--execute", action="store_true", help="通过检查后执行模拟调仓")
     parser.add_argument("--manual-approve", action="store_true", help="标记已人工确认")
     parser.add_argument("--available-cash", type=float, default=100000.0, help="初始或可用现金")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = _parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
     as_of_date = date.fromisoformat(args.date) if args.date else None
     run_daily_pipeline(
         as_of_date=as_of_date,
@@ -31,7 +31,8 @@ def main() -> None:
         manual_approved=args.manual_approve,
         available_cash=args.available_cash,
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
