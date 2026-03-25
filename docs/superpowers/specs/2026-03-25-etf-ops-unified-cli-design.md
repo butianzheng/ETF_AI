@@ -105,7 +105,7 @@
 
 ```bash
 python scripts/etf_ops.py workflow run [workflow 原有参数]
-python scripts/etf_ops.py workflow preflight [workflow/preflight 参数子集]
+python scripts/etf_ops.py workflow preflight [workflow run 同参，内部强制 --preflight-only]
 
 python scripts/etf_ops.py automation run -- [透传给 workflow runner 的参数]
 
@@ -162,7 +162,15 @@ python scripts/etf_ops.py workflow run --preflight-only ...
 
 - 内部仍调用同一 workflow runner
 - 不引入第二套预检实现
-- 允许传入与预检相关的同类参数，如日期范围、候选配置、日志级别
+- 参数面保持与 `workflow run` 一致，由统一 workflow 参数解析器处理
+- CLI 适配层在最终参数列表中强制附加 `--preflight-only`
+- 即使用户显式传入 `--run-daily`、`--publish` 等非预检场景参数，runner 也会因为 `--preflight-only` 而在预检后直接返回，不进入后续阶段
+
+这样设计的原因是：
+
+- 不需要维护第二套 workflow 参数定义
+- 旧 runner 参数校验逻辑可以完整复用
+- implementation planning 可以明确收敛为“复用同一参数面 + 强制注入 `--preflight-only`”
 
 ### 7.3 automation run
 
@@ -307,6 +315,8 @@ python scripts/etf_ops.py automation run --workdir /tmp/workflow_job -- --start-
   - `workflow_manifest`
   - `workflow_status`
   - `publish_executed`
+- 这些字段继续以稳定的 `key=value` 单行格式输出
+- 对于 `workflow run` / `workflow preflight` / `automation run`，总入口不得在 stdout 合同前后额外插入 banner、说明文本或包装层摘要；额外说明只能走 `stderr` 或 `--help`
 
 总入口不得在这些命令之上再套一层不兼容输出。
 
@@ -314,10 +324,26 @@ python scripts/etf_ops.py automation run --workdir /tmp/workflow_job -- --start-
 
 ### 10.1 读取优先级
 
+`status latest` 新增可选参数：
+
+- `--workdir <path>`
+
+路径语义：
+
+- 若显式传入 `--workdir`，则把该目录视为 artifact 根基准
+- 若未传入，则使用当前进程工作目录（cwd）作为根基准
+- automation artifact 与 workflow summary 都按同一根基准解析
+
+原因：
+
+- `automation run --workdir <path>` 已明确把 artifact 写到相对 `workdir` 的 `reports/...`
+- 若 `status latest` 只盯 repo root，会读不到外部 workdir 中的最近一次自动化运行
+- 以 `cwd/--workdir` 为基准，既兼容 repo 内手工运行，也兼容 `/tmp/workflow_job` 之类的本地半自动目录
+
 `status latest` 首版按以下顺序读取：
 
-1. `reports/workflow/automation/latest_run.json`
-2. `reports/workflow/end_to_end_workflow_summary.json`
+1. `<root>/reports/workflow/automation/latest_run.json`
+2. `<root>/reports/workflow/end_to_end_workflow_summary.json`
 
 优先 automation 的原因：
 
@@ -343,6 +369,30 @@ python scripts/etf_ops.py automation run --workdir /tmp/workflow_job -- --start-
 - `failed_step`
 - `blocked_reasons`
 - `suggested_next_action`
+
+映射规则固定如下：
+
+| 归一化字段 | automation latest_run.json | workflow summary |
+|---|---|---|
+| `source` | 固定为 `automation_latest` | 固定为 `workflow_summary_fallback` |
+| `run_id` | `run_id` | `run_id` |
+| `status` | `workflow_status` | `status` |
+| `started_at` | `automation_started_at` | `started_at` |
+| `finished_at` | `automation_finished_at` | `finished_at` |
+| `publish_executed` | `publish_executed` | `publish_result.executed`，缺失时按 `false` |
+| `manifest_path` | `workflow_manifest` | `workflow_manifest_path` |
+| `failed_step` | `failed_step` | `failed_step` |
+| `blocked_reasons` | `blocked_reasons`，缺失时按 `[]` | `research_governance_result.blocked_reasons`，缺失时按 `[]` |
+| `suggested_next_action` | `suggested_next_action` | 按下面的 fallback 规则派生 |
+
+当来源是 workflow summary 且缺少 `suggested_next_action` 时，按以下规则派生：
+
+- `status = blocked`：`inspect blocked_reasons and governance review status`
+- `status = failed` 且存在 `failed_step`：`inspect failed_step=<failed_step> and workflow manifest`
+- `status = failed` 且不存在 `failed_step`：`inspect workflow manifest and stage outputs`
+- 其他状态：`null`
+
+归一化后的 `manifest_path` 若为相对路径，则相对 `status latest` 的根基准目录解析；若已是绝对路径，则原样保留。
 
 ### 10.3 文本输出
 
@@ -389,12 +439,13 @@ python scripts/etf_ops.py automation run --workdir /tmp/workflow_job -- --start-
 
 ### 12.1 CLI smoke
 
-- `etf_ops --help`
-- `etf_ops workflow run --help`
-- `etf_ops automation run --help`
-- `etf_ops daily run --help`
-- `etf_ops research-governance run --help`
-- `etf_ops status latest --help`
+- `python scripts/etf_ops.py --help`
+- `python scripts/etf_ops.py workflow run --help`
+- `python scripts/etf_ops.py workflow preflight --help`
+- `python scripts/etf_ops.py automation run --help`
+- `python scripts/etf_ops.py daily run --help`
+- `python scripts/etf_ops.py research-governance run --help`
+- `python scripts/etf_ops.py status latest --help`
 
 ### 12.2 分发与兼容测试
 
