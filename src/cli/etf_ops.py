@@ -9,6 +9,7 @@ from src.cli.commands import (
     run_research_governance_command,
     run_workflow_command,
 )
+from src.cli.status import run_status_latest
 
 
 def _ensure_preflight_only(argv: list[str]) -> list[str]:
@@ -45,7 +46,16 @@ def build_parser() -> argparse.ArgumentParser:
     governance_subparsers = governance.add_subparsers(dest="governance_command", required=True)
     governance_subparsers.add_parser("run", help="Run research governance pipeline")
 
-    subparsers.add_parser("status", help="Status commands (reserved)")
+    status = subparsers.add_parser("status", help="Status commands")
+    status_subparsers = status.add_subparsers(dest="status_command", required=True)
+    status_latest = status_subparsers.add_parser("latest", help="Show latest workflow status")
+    status_latest.add_argument("--workdir", help="Artifacts root directory")
+    status_latest.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Output JSON only",
+    )
 
     return parser
 
@@ -71,5 +81,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "research-governance" and args.governance_command == "run":
         return run_research_governance_command(list(passthrough or []))
+
+    if args.command == "status" and args.status_command == "latest":
+        return run_status_latest(args.workdir, output_json=args.json_output)
 
     parser.error("Unsupported command")

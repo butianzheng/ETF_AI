@@ -198,6 +198,77 @@
 ### 规划产物
 
 - Spec: `docs/superpowers/specs/2026-03-25-shared-candidate-config-helper-design.md`
+
+# Status Latest Command Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 在隔离 worktree 中实现 `status latest` 的读取、归一化和文本/JSON 输出，并通过单测验证。
+
+**Architecture:** 新增 `src/cli/status.py` 提供 root 解析、artifact 读取、归一化、文本渲染；`src/cli/etf_ops.py` 负责 CLI 接线；测试覆盖优先级、fallback、错误码与文本输出关键字段。
+
+**Tech Stack:** Python, pytest, argparse (现有 CLI)
+
+---
+
+### Task 1: Status Latest CLI + Normalization
+
+**Files:**
+- Create: `src/cli/status.py`
+- Create: `tests/test_etf_ops_status.py`
+- Modify: `src/cli/etf_ops.py`
+
+- [x] **Step 1: Write the failing tests**
+
+```python
+def test_status_latest_prefers_automation_latest_run(tmp_path):
+    ...
+
+def test_status_latest_falls_back_to_workflow_summary(tmp_path):
+    ...
+
+def test_status_latest_returns_one_when_no_artifact_exists(tmp_path):
+    ...
+
+def test_status_latest_text_output_contains_key_fields(tmp_path, capsys):
+    ...
+
+def test_status_latest_returns_one_for_invalid_json(tmp_path):
+    ...
+```
+
+- [x] **Step 2: Run test to verify it fails**
+
+Run: `pytest tests/test_etf_ops_status.py -q`  
+Expected: FAIL (status/latest not implemented)
+
+- [x] **Step 3: Write minimal implementation**
+
+```python
+def resolve_status_root(workdir: str | None) -> Path:
+    ...
+
+def load_latest_status(root: Path) -> tuple[str, dict[str, Any]]:
+    ...
+
+def normalize_status_payload(...):
+    ...
+
+def render_status_text(...):
+    ...
+```
+
+- [x] **Step 4: Run test to verify it passes**
+
+Run: `pytest tests/test_etf_ops_status.py -q`  
+Expected: PASS
+
+- [x] **Step 5: Commit**
+
+```bash
+git add tests/test_etf_ops_status.py src/cli/status.py src/cli/etf_ops.py
+git commit -m "feat: add latest status command"
+```
 - Plan: `docs/superpowers/plans/2026-03-25-shared-candidate-config-helper-implementation.md`
 
 ### 完成结果
@@ -218,6 +289,22 @@
 - [x] Task 2：blocked / fatal / summary 语义与退出码优先级
 - [x] Task 3：可选 daily / publish / post-publish health
 - [x] Task 4：README / 任务跟踪 / 最终聚焦回归
+
+## 2026-03-25 Unified CLI `status latest`（Task 2）
+
+### 执行清单（立项）
+- [x] 读取相关上下文与 schema，确认字段映射和 fallback 语义
+- [ ] 先新增 `tests/test_etf_ops_status.py` 并覆盖 5 个必测场景
+- [ ] 运行 `pytest tests/test_etf_ops_status.py -q` 并确认 RED
+- [ ] 新增 `src/cli/status.py`，实现读取/归一化/文本渲染最小闭环
+- [ ] 修改 `src/cli/etf_ops.py`，接入 `status latest --workdir --json`
+- [ ] 运行 `python scripts/etf_ops.py status latest --help` 并确认返回 0
+- [ ] 回跑 `pytest tests/test_etf_ops_status.py -q` 并确认 GREEN
+- [ ] 提交 `feat: add latest status command`
+
+### 审查记录（待完成）
+- [ ] 对照 task 要求逐项自检（根目录语义、双源回退、JSON 纯输出、错误返回码）
+- [ ] 记录验证命令与结果
 
 ### 规划产物
 
