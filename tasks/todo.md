@@ -244,12 +244,11 @@
   - Task 3：`pytest tests/test_end_to_end_workflow_runner.py -q` 通过（`12 passed in 0.63s`）
   - Task 4：`pytest tests/test_end_to_end_workflow_runner.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py tests/test_pipeline_e2e.py -q` 通过（`33 passed in 1.04s`）
 
-## 下一步行动
+## 后续阶段建议（已完成）
 
-1. 提交 Task 4 文档更新：`docs: document end to end workflow runner`
-2. 对整个端到端 runner 子项目做最终收口检查
-3. 按 `finishing-a-development-branch` 提供后续处理选项
-4. 进入下一轮研究-治理-发布联调或自动化扩展
+1. 将 stdout 合同与 per-run manifest 作为 CI artifact，替代依赖 legacy summary 覆盖语义
+2. 进入“运营化与联调闭环”阶段，补齐 preflight/manifest/stdout 合同与聚焦回归
+3. 基于 runner 的结果做可观测性与告警（按 `run_id` 定位 manifest、health report、pipeline summary）
 
 ## 2026-03-25 Workflow Runner 运营化与联调闭环
 
@@ -294,7 +293,7 @@
 - 最终聚焦回归：
   - 命令：`pytest tests/test_workflow_preflight.py tests/test_workflow_manifest.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py tests/test_pipeline_e2e.py -q`
   - 结果：通过（`47 passed in 1.33s`）
-- Task 4 提交：本次提交（`docs: add workflow runner operationalization plan`）
+- Task 4 提交：`0c4ffcf`（`docs: add workflow runner operationalization plan`）
 
 ## 下一步行动（切到后续阶段建议）
 

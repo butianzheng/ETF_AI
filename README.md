@@ -196,7 +196,7 @@ python scripts/run_end_to_end_workflow.py \
   - `failed`：预检失败或任一阶段 fatal error
 - `exit_code=0`：成功，或 `blocked` 但未启用 `--fail-on-blocked`
 - `exit_code=2`：`blocked` 且启用了 `--fail-on-blocked`
-- `exit_code=1`：fatal，包括 `research-governance`、`health check`、`publish`、`post-publish health check`
+- `exit_code=1`：fatal，包括 `preflight`、`research-governance`、`health check`、`publish`、`post-publish health check`
 - manifest / summary JSON 内会同时保留：`health_check_result`（publish 前）、`post_publish_health_check_result`（publish 后，若执行）、`publish_result`
 
 ## 项目结构
