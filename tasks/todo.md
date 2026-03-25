@@ -323,7 +323,7 @@
 - Task 1 code review：修复后通过
 - Task 1 fresh 验证：`pytest tests/test_etf_ops_cli.py -q` -> `11 passed in 0.43s`
 
-- Task 2 提交：`6a5abec`、`9a1d3d5`、`b5a2333`
+- Task 2 提交：`6a5abec`、`9a1d3d5`、`b5a2333`、`fcf126f`
 - Task 2 spec review：通过
 - Task 2 code review：修复后通过
 - Task 2 fresh 验证：`pytest tests/test_etf_ops_status.py -q` -> `9 passed in 0.48s`
@@ -339,6 +339,9 @@
 - 命令：`pytest tests/test_etf_ops_cli.py tests/test_etf_ops_status.py tests/test_etf_ops_legacy_compat.py tests/test_end_to_end_workflow_runner.py tests/test_end_to_end_workflow_runner_cli_smoke.py tests/test_workflow_automation.py tests/test_workflow_automation_runner.py tests/test_workflow_automation_cli_smoke.py tests/test_research_governance_pipeline.py tests/test_research_governance_pipeline_cli_smoke.py -q`
 - 结果：通过（`99 passed in 4.06s`）
 - 全量回归：`pytest -q` 通过（`215 passed in 5.70s`）
+- Task 4 提交：待回填（本次 `docs:` 提交 SHA）
+- Task 4 spec review：待回填
+- Task 4 code review：按本轮 3 条问题修复后待复审
 
 ## 下一步行动（切到后续阶段建议）
 

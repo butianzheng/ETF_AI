@@ -58,7 +58,7 @@ python scripts/run_backtest.py
 ### 6. 每日闭环运行
 
 ```bash
-python scripts/daily_run.py --date 2026-03-11 --manual-approve --execute
+python scripts/etf_ops.py daily run --date 2026-03-11 --manual-approve --execute
 ```
 
 ### 7. 运行研究线
@@ -208,6 +208,7 @@ python scripts/etf_ops.py automation run --workdir /tmp/workflow_job -- --start-
 说明：
 - wrapper 通过真实子进程调用 `scripts/run_end_to_end_workflow.py`，不复制业务编排逻辑
 - `--workdir` 控制 runner 进程的工作目录（cwd）；当 `workdir != repo root` 时，会自动准备 `config -> <repo>/config` 符号链接，保证配置解析路径一致
+- `automation run` 未显式传 `--workdir` 时，产物默认写到 repo root 下的 `reports/workflow/**`
 - `--` 后面的参数会原样透传给 runner（例如 `--preflight-only`、`--fail-on-blocked`、`--publish` 等）
 
 ### 13. 快速查看最近一次工作流状态
@@ -220,12 +221,14 @@ python scripts/etf_ops.py status latest --workdir /tmp/workflow_job --json
 
 说明：
 - `status latest` 默认读取当前工作目录下的 `reports/workflow/**` 产物
+- 若在 repo 外执行了 `automation run`，建议显式传 `--workdir <dir>` 固定产物目录；后续查询状态时也传同一个 `--workdir <dir>`，否则可能读取到错误目录
 - 当自动化运行使用 `python scripts/etf_ops.py automation run --workdir <dir> ...` 时，状态查询应使用同一个 `<dir>`：`python scripts/etf_ops.py status latest --workdir <dir>`
 - 状态读取优先级：`reports/workflow/automation/latest_run.json`，不存在时回退到 `reports/workflow/end_to_end_workflow_summary.json`
 
 ### 14. 旧脚本兼容入口（保留）
 
 以下脚本仍可继续使用，当前作为兼容入口保留，`--help` 会提示迁移到统一入口：
+- `python scripts/daily_run.py ...`
 - `python scripts/run_end_to_end_workflow.py ...`
 - `python scripts/run_workflow_automation.py ...`
 - `python scripts/run_research_governance_pipeline.py ...`
