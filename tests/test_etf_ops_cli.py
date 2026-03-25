@@ -108,6 +108,57 @@ def test_automation_run_keeps_double_dash_passthrough(monkeypatch):
     assert received == ["--", "--workdir", "/tmp/wd", "--", "--preflight-only"]
 
 
+def test_automation_run_without_double_dash_does_not_drop_args(monkeypatch):
+    import src.cli.etf_ops as cli
+
+    received: list[str] = []
+
+    def _fake(argv: list[str]) -> int:
+        received[:] = argv
+        return 0
+
+    monkeypatch.setattr(cli, "run_automation_command", _fake)
+
+    exit_code = cli.main(["automation", "run", "--workdir", "/tmp/wd"])
+
+    assert exit_code == 0
+    assert received == ["--workdir", "/tmp/wd"]
+
+
+def test_workflow_preflight_normalizes_leading_double_dash(monkeypatch):
+    import src.cli.etf_ops as cli
+
+    received: list[str] = []
+
+    def _fake(argv: list[str]) -> int:
+        received[:] = argv
+        return 0
+
+    monkeypatch.setattr(cli, "run_workflow_command", _fake)
+
+    exit_code = cli.main(["workflow", "preflight", "--", "--start-date", "2026-01-01"])
+
+    assert exit_code == 0
+    assert received == ["--start-date", "2026-01-01", "--preflight-only"]
+
+
+def test_workflow_preflight_does_not_duplicate_preflight_only(monkeypatch):
+    import src.cli.etf_ops as cli
+
+    received: list[str] = []
+
+    def _fake(argv: list[str]) -> int:
+        received[:] = argv
+        return 0
+
+    monkeypatch.setattr(cli, "run_workflow_command", _fake)
+
+    exit_code = cli.main(["workflow", "preflight", "--preflight-only", "--start-date", "2026-01-01"])
+
+    assert exit_code == 0
+    assert received.count("--preflight-only") == 1
+
+
 def test_workflow_run_does_not_add_wrapper_stdout(monkeypatch, capsys):
     import src.cli.etf_ops as cli
 

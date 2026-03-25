@@ -17,6 +17,12 @@ def _ensure_preflight_only(argv: list[str]) -> list[str]:
     return [*argv, "--preflight-only"]
 
 
+def _strip_leading_double_dash(argv: list[str]) -> list[str]:
+    if argv and argv[0] == "--":
+        return argv[1:]
+    return list(argv)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="ETF Ops unified command entry")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -51,11 +57,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "workflow":
         workflow_args = list(passthrough or [])
         if args.workflow_command == "preflight":
+            workflow_args = _strip_leading_double_dash(workflow_args)
             workflow_args = _ensure_preflight_only(workflow_args)
         return run_workflow_command(workflow_args)
 
     if args.command == "automation" and args.automation_command == "run":
-        return run_automation_command(list(args.runner_args or []))
+        passthrough_args = list(passthrough or [])
+        runner_args = list(args.runner_args or [])
+        return run_automation_command([*passthrough_args, *runner_args])
 
     if args.command == "daily" and args.daily_command == "run":
         return run_daily_command(list(passthrough or []))
@@ -64,4 +73,3 @@ def main(argv: list[str] | None = None) -> int:
         return run_research_governance_command(list(passthrough or []))
 
     parser.error("Unsupported command")
-    return 2
