@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -82,6 +83,38 @@ def _resolve_manifest_path(value: str, *, workdir: Path) -> Path:
     if path.is_absolute():
         return path
     return (workdir / path).resolve()
+
+
+def _prepare_runner_env(*, workdir: Path, repo_root: Path) -> dict[str, str]:
+    """Prepare runner env with a tiny sitecustomize bootstrap for DB init."""
+    bootstrap_dir = workdir / ".workflow_automation_bootstrap"
+    bootstrap_dir.mkdir(parents=True, exist_ok=True)
+    sitecustomize = bootstrap_dir / "sitecustomize.py"
+    sitecustomize.write_text(
+        (
+            "import os\n"
+            "import sys\n"
+            "root = os.environ.get('WORKFLOW_AUTOMATION_PROJECT_ROOT')\n"
+            "if root and root not in sys.path:\n"
+            "    sys.path.insert(0, root)\n"
+            "try:\n"
+            "    from src.storage import database as _db\n"
+            "    _db.reset_engine()\n"
+            "    _db.init_db()\n"
+            "except Exception:\n"
+            "    pass\n"
+        ),
+        encoding="utf-8",
+    )
+
+    env = dict(os.environ)
+    prev_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = (
+        f"{bootstrap_dir}{os.pathsep}{prev_pythonpath}" if prev_pythonpath else str(bootstrap_dir)
+    )
+    env["WORKFLOW_AUTOMATION_PROJECT_ROOT"] = str(repo_root)
+    return env
+
 
 def _sanitize_runner_args(runner_args: list[str]) -> list[str]:
     # `argparse.REMAINDER` may include a literal `--` marker; do not forward it to the runner.
@@ -151,12 +184,14 @@ def main(argv: list[str] | None = None) -> int:
         runner_stderr = prep_error or "wrapper preparation failed"
     else:
         try:
+            runner_env = _prepare_runner_env(workdir=workdir, repo_root=repo_root)
             proc = subprocess.run(
                 runner_command,
                 cwd=str(workdir),
                 text=True,
                 capture_output=True,
                 check=False,
+                env=runner_env,
             )
             runner_exit_code = proc.returncode
             runner_stdout = proc.stdout or ""
