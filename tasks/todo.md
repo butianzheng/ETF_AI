@@ -251,6 +251,33 @@
 3. 按 `finishing-a-development-branch` 提供后续处理选项
 4. 进入下一轮研究-治理-发布联调或自动化扩展
 
+## 2026-03-25 Workflow Runner 运营化与联调闭环
+
+### 执行清单（立项）
+- [x] 完成设计 spec
+- [x] 完成 implementation plan
+- [ ] Task 1：preflight 辅助模块与失败语义
+- [ ] Task 2：run_id / per-run manifest / legacy summary 兼容
+- [ ] Task 3：自动化 stdout 合同与 runner smoke
+- [ ] Task 4：README / 任务跟踪 / 最终聚焦回归
+
+### 规划产物
+
+- Spec: `docs/superpowers/specs/2026-03-25-workflow-runner-operationalization-design.md`
+- Plan: `docs/superpowers/plans/2026-03-25-workflow-runner-operationalization-implementation.md`
+
+### 审查状态
+
+- Spec review：已通过
+- Plan review：已通过
+
+## 下一步行动
+
+1. 按新 plan 执行 Task 1，先落 preflight 与 `--preflight-only`
+2. 执行 Task 2，补齐 `run_id` 与 per-run manifest
+3. 执行 Task 3，锁定自动化 stdout 合同与 runner smoke
+4. 完成 Task 4 后做最终聚焦回归与收口
+
 ## 2026-03-12 项目扫描
 
 ### 扫描计划
