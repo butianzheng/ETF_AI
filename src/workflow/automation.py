@@ -96,18 +96,24 @@ def validate_workflow_contract(
     contract: dict[str, Any],
     manifest_payload: dict[str, Any],
     runner_process_exit_code: int | None,
+    manifest_path: str | Path | None = None,
 ) -> None:
     """Validate manifest payload matches stdout contract (best-effort, strict on run_id/status)."""
 
     if not isinstance(contract, dict) or not isinstance(manifest_payload, dict):
         raise WorkflowContractError("contract/manifest_payload must be dict")
 
-    manifest_path_value = contract.get("workflow_manifest")
-    if not isinstance(manifest_path_value, str) or not manifest_path_value.strip():
-        raise WorkflowContractError("runner contract missing workflow_manifest")
-    manifest_path = Path(manifest_path_value)
-    if not manifest_path.exists():
-        raise WorkflowContractError(f"workflow_manifest path does not exist: {manifest_path_value}")
+    resolved_manifest_path: Path | None = None
+    if manifest_path is not None:
+        resolved_manifest_path = Path(manifest_path)
+    else:
+        manifest_path_value = contract.get("workflow_manifest")
+        if not isinstance(manifest_path_value, str) or not manifest_path_value.strip():
+            raise WorkflowContractError("runner contract missing workflow_manifest")
+        resolved_manifest_path = Path(manifest_path_value)
+
+    if not resolved_manifest_path.exists():
+        raise WorkflowContractError(f"workflow_manifest path does not exist: {str(resolved_manifest_path)}")
 
     contract_run_id = contract.get("run_id")
     manifest_run_id = manifest_payload.get("run_id")
@@ -210,6 +216,8 @@ def write_runner_logs(
 
 def should_update_attention(record: dict[str, Any]) -> bool:
     attention_type = record.get("attention_type")
+    if attention_type == "automation_contract_error":
+        return True
     status = record.get("workflow_status")
     if status in ("succeeded", "preflight_only"):
         return False
@@ -304,7 +312,7 @@ def render_attention_markdown(record: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def write_automation_outputs(record: dict[str, Any], *, root: Path) -> dict[str, str]:
+def write_automation_outputs(record: dict[str, Any], *, root: Path) -> dict[str, str | None]:
     if not isinstance(record, dict):
         raise ValueError("record must be a dict")
     if not record.get("automation_run_id"):
@@ -332,7 +340,7 @@ def write_automation_outputs(record: dict[str, Any], *, root: Path) -> dict[str,
         )
         latest_attention_md_path.write_text(render_attention_markdown(record), encoding="utf-8")
 
-    out: dict[str, Any] = {
+    out: dict[str, str | None] = {
         "run_history_path": str(run_history_path),
         "latest_run_path": str(latest_run_path),
         "latest_attention_json_path": str(latest_attention_json_path) if updated_attention else None,

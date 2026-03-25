@@ -226,7 +226,7 @@ def test_validate_workflow_contract_manifest_path_missing(tmp_path):
         "publish_executed": False,
     }
     with pytest.raises(WorkflowContractError, match="workflow_manifest path does not exist"):
-        validate_workflow_contract(contract, {}, runner_process_exit_code=1)
+        validate_workflow_contract(contract, {}, runner_process_exit_code=1, manifest_path=missing_manifest)
 
 
 def test_validate_workflow_contract_status_mismatch(tmp_path):
@@ -269,6 +269,12 @@ def test_should_update_attention_boundaries():
     assert should_update_attention({"workflow_status": "blocked"}) is True
     assert should_update_attention({"workflow_status": "failed"}) is True
     assert should_update_attention({"failed_step": "automation_contract_error"}) is True
+    assert (
+        should_update_attention(
+            {"workflow_status": "preflight_only", "attention_type": "automation_contract_error"}
+        )
+        is True
+    )
 
     assert should_update_attention({"workflow_status": "succeeded"}) is False
     assert should_update_attention({"workflow_status": "preflight_only"}) is False
