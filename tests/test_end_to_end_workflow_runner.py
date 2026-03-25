@@ -318,6 +318,9 @@ def test_workflow_runner_returns_one_when_preflight_fails(tmp_path, monkeypatch,
     manifest_payload = json.loads(Path(payload["workflow_manifest_path"]).read_text(encoding="utf-8"))
     assert manifest_payload == payload
     assert re.search(r"^run_id=\S+", stdout, re.MULTILINE)
+    assert re.search(r"^workflow_manifest=\S+", stdout, re.MULTILINE)
+    assert "workflow_status=failed" in stdout
+    assert "publish_executed=false" in stdout
 
 
 def test_workflow_runner_calls_init_db_before_preflight(tmp_path, monkeypatch):
